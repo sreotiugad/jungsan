@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 광고 정산 자동화 시스템</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #f5f4f0; color: #1a1a18; font-size: 14px; line-height: 1.6; }
+
+  /* ── 레이아웃 ── */
+  #app { min-height: 100vh; }
+  .nav { background: #fff; border-bottom: 1px solid #e5e3dc; display: flex; align-items: center; padding: 0 24px; height: 52px; gap: 8px; position: sticky; top: 0; z-index: 50; }
+  .nav-brand { font-size: 15px; font-weight: 600; margin-right: 8px; }
+  .nav-tabs { display: flex; gap: 4px; flex: 1; }
+  .nav-tab { padding: 7px 14px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 14px; color: #73726c; transition: all .15s; }
+  .nav-tab.active { background: #f0efe9; color: #1a1a18; font-weight: 500; }
+  .nav-user { font-size: 13px; color: #73726c; }
+  .nav-btn { padding: 6px 14px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 13px; color: #73726c; }
+  .nav-btn:hover { background: #f0efe9; }
+
+  .content { max-width: 1060px; margin: 0 auto; padding: 28px 20px; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── 카드 ── */
+  .card { background: #fff; border: 1px solid #e5e3dc; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+
+  /* ── 그리드 ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+  /* ── 폼 ── */
+  label.lbl { font-size: 12px; color: #73726c; margin-bottom: 5px; display: block; font-weight: 500; }
+  input, select, textarea {
+    width: 100%; padding: 9px 12px; border: 1px solid #d3d1c7; border-radius: 8px;
+    background: #fff; color: #1a1a18; font-size: 14px; outline: none; font-family: inherit;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: #888780; }
+  input:disabled, select:disabled { background: #f5f4f0; color: #888780; cursor: not-allowed; }
+
+  /* ── 버튼 ── */
+  .btn { padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; font-family: inherit; transition: opacity .15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #1a1a18; color: #fff; }
+  .btn-secondary { background: #f0efe9; color: #1a1a18; border: 1px solid #d3d1c7; }
+  .btn-danger { background: #fce8e8; color: #a32d2d; border: 1px solid #f09595; }
+  .btn-ghost { background: transparent; color: #73726c; border: none; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* ── 테이블 ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 8px 10px; text-align: left; color: #73726c; font-weight: 500; border-bottom: 1px solid #e5e3dc; background: #faf9f7; }
+  td { padding: 9px 10px; border-bottom: 1px solid #f0efe9; }
+  tr:last-child td { border-bottom: none; }
+  .text-right { text-align: right; }
+  .total-row td { font-weight: 600; background: #faf9f7; border-top: 2px solid #d3d1c7; }
+
+  /* ── 배지 ── */
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: #f0efe9; border: 1px solid #e5e3dc; color: #5f5e5a; margin: 2px; }
+
+  /* ── 알림 ── */
+  .alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .alert-error { background: #fce8e8; color: #a32d2d; border: 1px solid #f09595; }
+  .alert-info { background: #e8f4fb; color: #0c447c; border: 1px solid #85b7eb; }
+  .alert-success { background: #eaf3de; color: #27500a; border: 1px solid #97c459; }
+
+  /* ── 로그인 페이지 ── */
+  .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f5f4f0; }
+  .auth-card { width: 380px; }
+  .auth-title { text-align: center; margin-bottom: 28px; }
+  .auth-title h1 { font-size: 22px; font-weight: 600; }
+  .auth-title p { font-size: 13px; color: #73726c; margin-top: 4px; }
+  .tab-bar { display: flex; border-bottom: 1px solid #e5e3dc; margin-bottom: 20px; }
+  .tab-bar button { flex: 1; padding: 8px 0; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #73726c; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; transition: all .15s; }
+  .tab-bar button.active { color: #1a1a18; font-weight: 500; border-bottom-color: #1a1a18; }
+  .form-group { margin-bottom: 14px; }
+
+  /* ── 모달 ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; z-index: 100; overflow-y: auto; padding: 32px 16px; }
+  .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 720px; padding: 28px; margin-bottom: 32px; }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+
+  /* ── 캠페인 박스 ── */
+  .camp-box { border: 1px solid #e5e3dc; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .media-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 36px; gap: 8px; align-items: end; margin-bottom: 8px; }
+
+  /* ── 정산 입력 박스 ── */
+  .stl-media-box { border: 1px solid #e5e3dc; border-radius: 10px; padding: 16px; margin-bottom: 12px; transition: border-color .2s, background .2s; }
+  .stl-media-box.filled { border-color: #5DCAA5; background: #f0faf6; }
+  .stl-input-grid { display: grid; grid-template-columns: 2fr 1.2fr 1.2fr 1.5fr; gap: 10px; margin-top: 10px; }
+
+  /* ── 스텝 인디케이터 ── */
+  .steps { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; }
+  .step-item { display: flex; align-items: center; gap: 6px; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: #e5e3dc; color: #888; }
+  .step-num.active { background: #1a1a18; color: #fff; }
+  .step-num.done { background: #1D9E75; color: #fff; }
+  .step-label { font-size: 13px; color: #888; }
+  .step-label.active { color: #1a1a18; font-weight: 500; }
+  .step-divider { flex: 0 0 24px; height: 1px; background: #e5e3dc; }
+
+  /* ── 통계 카드 ── */
+  .stat-val { font-size: 22px; font-weight: 600; margin-top: 6px; }
+  .stat-lbl { font-size: 12px; color: #73726c; }
+
+  /* ── 기타 ── */
+  .row-btns { display: flex; gap: 10px; justify-content: space-between; margin-top: 18px; }
+  .right-btns { display: flex; gap: 10px; }
+  .tag-green { color: #1D9E75; font-size: 12px; font-weight: 500; }
+  .tag-red { color: #a32d2d; font-size: 12px; }
+  .empty-state { text-align: center; padding: 52px; color: #888; }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+  .hidden { display: none !important; }
+  hr { border: none; border-top: 1px solid #e5e3dc; margin: 18px 0; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .page-sub { font-size: 13px; color: #73726c; margin-bottom: 22px; }
+  .success-box { text-align: center; padding: 52px; }
+  .success-icon { font-size: 48px; margin-bottom: 16px; }
+
+  @media (max-width: 600px) {
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+    .media-row { grid-template-columns: 1fr 1fr; }
+    .stl-input-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── 로그인 화면 ── -->
+<div id="auth-page">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-title">
+        <h1>📊 정산 자동화 시스템</h1>
+        <p>광고 대행사 정산 관리</p>
+      </div>
+      <div class="card">
+        <div class="tab-bar">
+          <button id="tab-login" class="active" onclick="switchAuthTab('login')">로그인</button>
+          <button id="tab-register" onclick="switchAuthTab('register')">회원가입</button>
+        </div>
+        <div id="auth-error" class="alert alert-error hidden"></div>
+        <div class="form-group">
+          <label class="lbl">아이디</label>
+          <input id="auth-id" placeholder="아이디" onkeydown="if(event.key==='Enter')doAuth()">
+        </div>
+        <div class="form-group">
+          <label class="lbl">비밀번호</label>
+          <input id="auth-pw" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doAuth()">
+        </div>
+        <div id="register-fields" class="hidden">
+          <div class="form-group">
+            <label class="lbl">이름 *</label>
+            <input id="auth-name" placeholder="이름">
+          </div>
+          <div class="form-group">
+            <label class="lbl">팀명</label>
+            <input id="auth-team" placeholder="팀명 (예: 3PM-3)">
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="doAuth()">
+          <span id="auth-btn-text">로그인</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 메인 앱 ── -->
+<div id="main-app" class="hidden">
+  <div class="nav">
+    <div class="nav-brand">📊 정산 자동화</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="goto('dash')">대시보드</button>
+      <button class="nav-tab" onclick="goto('adv')">광고주 관리</button>
+      <button class="nav-tab" onclick="goto('stl')">정산 처리</button>
+    </div>
+    <span class="nav-user" id="nav-user-name"></span>
+    <button class="nav-btn" onclick="doLogout()">로그아웃</button>
+  </div>
+
+  <div class="content">
+    <!-- 대시보드 -->
+    <div id="page-dash" class="page active">
+      <div class="page-title" id="dash-greeting">안녕하세요 👋</div>
+      <div class="page-sub">이번 달 정산 현황입니다</div>
+      <div class="grid3" style="margin-bottom:18px">
+        <div class="card"><div class="stat-lbl">관리 광고주</div><div class="stat-val" id="stat-advs">0개</div></div>
+        <div class="card"><div class="stat-lbl">이번달 정산 건수</div><div class="stat-val" id="stat-count">0건</div></div>
+        <div class="card"><div class="stat-lbl">이번달 청구 합계</div><div class="stat-val" id="stat-total">₩0</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">빠른 시작</div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary" onclick="goto('stl')">+ 정산 처리 시작</button>
+          <button class="btn btn-secondary" onclick="goto('adv')">광고주 관리</button>
+        </div>
+        <div id="dash-hint" class="alert alert-info hidden" style="margin-top:14px">💡 먼저 광고주와 수수료율을 등록해주세요</div>
+      </div>
+      <div class="card" id="recent-card">
+        <div class="card-title">최근 정산 내역</div>
+        <table>
+          <thead><tr>
+            <th>광고주</th><th>캠페인</th><th>매체</th>
+            <th class="text-right">공급가액</th><th class="text-right">청구금액</th>
+          </tr></thead>
+          <tbody id="recent-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 광고주 관리 -->
+    <div id="page-adv" class="page">
+      <div class="flex-between">
+        <div class="page-title">광고주 관리</div>
+        <button class="btn btn-primary" onclick="openAdvModal(null)">+ 광고주 추가</button>
+      </div>
+      <div id="adv-list"></div>
+    </div>
+
+    <!-- 정산 처리 -->
+    <div id="page-stl" class="page">
+      <div class="page-title">정산 처리</div>
+      <div class="page-sub">파일 업로드 또는 금액 입력 → 자동 계산 → XLSX 다운로드</div>
+
+      <div class="steps">
+        <div class="step-item"><div class="step-num active" id="snum1">1</div><div class="step-label active" id="slbl1">기본 정보</div></div>
+        <div class="step-divider"></div>
+        <div class="step-item"><div class="step-num" id="snum2">2</div><div class="step-label" id="slbl2">금액 입력</div></div>
+        <div class="step-divider"></div>
+        <div class="step-item"><div class="step-num" id="snum3">3</div><div class="step-label" id="slbl3">결과 확인</div></div>
+        <div class="step-divider"></div>
+        <div class="step-item"><div class="step-num" id="snum4">4</div><div class="step-label" id="slbl4">완료</div></div>
+      </div>
+
+      <div id="stl-step1" class="card">
+        <div class="card-title">정산 기본 정보</div>
+        <div class="grid2">
+          <div><label class="lbl">광고주</label>
+            <select id="stl-adv" onchange="onStlAdvChange()">
+              <option value="">선택하세요</option>
+            </select>
+          </div>
+          <div><label class="lbl">캠페인</label>
+            <select id="stl-camp" disabled>
+              <option value="">선택하세요</option>
+            </select>
+          </div>
+          <div><label class="lbl">정산 기간</label><input id="stl-period" type="month"></div>
+          <div><label class="lbl">세금계산서 발행일</label><input id="stl-billing-date" type="date"></div>
+        </div>
+        <div style="text-align:right;margin-top:16px">
+          <button class="btn btn-primary" onclick="stlNext1()">다음 →</button>
+        </div>
+      </div>
+
+      <div id="stl-step2" class="hidden">
+        <div class="card">
+          <div class="card-title">금액 입력</div>
+          <div id="stl-info-label" style="font-size:13px;color:#73726c;margin-bottom:16px"></div>
+          <div id="stl-media-inputs"></div>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-secondary" onclick="stlBack(1)">← 이전</button>
+          <button class="btn btn-primary" onclick="stlCalc()">계산하기 →</button>
+        </div>
+      </div>
+
+      <div id="stl-step3" class="hidden">
+        <div class="card">
+          <div class="card-title">정산 결과</div>
+          <div id="stl-result-label" style="font-size:13px;color:#73726c;margin-bottom:16px"></div>
+          <div style="overflow-x:auto">
+            <table id="stl-result-table">
+              <thead><tr>
+                <th>매체</th>
+                <th class="text-right">공급가액</th>
+                <th class="text-right">마크업율</th>
+                <th class="text-right">마크업금액</th>
+                <th class="text-right">매체수수료율</th>
+                <th class="text-right">매체수수료</th>
+                <th class="text-right">합계</th>
+                <th class="text-right">전월오차</th>
+                <th class="text-right">청구합계</th>
+              </tr></thead>
+              <tbody id="stl-result-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-secondary" onclick="stlBack(2)">← 이전</button>
+          <div class="right-btns">
+            <label style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #d3d1c7;border-radius:8px;cursor:pointer;background:#faf9f7;font-size:13px">
+              <span>📂 기존 파일에 추가</span>
+              <input type="file" id="template-file-input" accept=".xlsx" style="display:none" onchange="stlFillTemplate(this)">
+            </label>
+            <button class="btn btn-secondary" onclick="stlExport()">📄 새 XLSX 다운로드</button>
+            <button class="btn btn-primary" onclick="stlSave()">저장 완료</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="stl-step4" class="hidden">
+        <div class="card success-box">
+          <div class="success-icon">✅</div>
+          <div style="font-size:20px;font-weight:600;margin-bottom:8px">정산 완료!</div>
+          <div id="stl-done-label" style="font-size:13px;color:#73726c;margin-bottom:24px"></div>
+          <div class="right-btns" style="justify-content:center;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #d3d1c7;border-radius:8px;cursor:pointer;background:#faf9f7;font-size:13px">
+              <span>📂 기존 파일에 추가</span>
+              <input type="file" id="template-file-input2" accept=".xlsx" style="display:none" onchange="stlFillTemplate(this)">
+            </label>
+            <button class="btn btn-primary" onclick="stlExport()">📄 새 XLSX 다운로드</button>
+            <button class="btn btn-secondary" onclick="stlReset()">새 정산 처리</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 광고주 모달 ── -->
+<div id="adv-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeAdvModal()">
+  <div class="modal">
+    <div class="modal-title" id="adv-modal-title">광고주 추가</div>
+    <div class="grid2" style="margin-bottom:18px">
+      <div><label class="lbl">광고주명 *</label><input id="adv-name" placeholder="주식회사 ..."></div>
+      <div><label class="lbl">사업자등록번호</label><input id="adv-biz" placeholder="000-00-00000"></div>
+      <div><label class="lbl">담당자명</label><input id="adv-contact" placeholder="담당자 이름"></div>
+      <div><label class="lbl">세금계산서 이메일</label><input id="adv-email" placeholder="example@company.com"></div>
+    </div>
+    <hr>
+    <div class="flex-between" style="margin-bottom:14px">
+      <div style="font-size:14px;font-weight:500">캠페인 · 매체별 수수료</div>
+      <button class="btn btn-secondary btn-sm" onclick="addCamp()">+ 캠페인 추가</button>
+    </div>
+    <div id="camp-list"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-secondary" onclick="closeAdvModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveAdv()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 상태 ──────────────────────────────────────────────
+const MEDIA_LIST = ['구글','네이버SA','네이버GFA','네이버NOSP','카카오SA','카카오모먼트','카카오브검','카카오키워드','메타','틱톡','크리테오','애플서치애드','모비온','ADN','네이트','기타'];
+let currentUser = null;
+let advertisers = [];
+let settlements = [];
+let editingAdv = null;
+let stlState = { adv: null, camp: null, period: '', billingDate: '', inputs: {}, rows: [] };
+let authTab = 'login';
+
+// ── 유틸 ──────────────────────────────────────────────
+const fmt = n => n == null ? '' : Math.round(n).toLocaleString('ko-KR');
+const pct = n => Math.round((n || 0) * 100);
+const $ = id => document.getElementById(id);
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...opts });
+  return r.json();
+};
+
+// ── 인증 ──────────────────────────────────────────────
+function switchAuthTab(tab) {
+  authTab = tab;
+  $('tab-login').classList.toggle('active', tab === 'login');
+  $('tab-register').classList.toggle('active', tab === 'register');
+  $('register-fields').classList.toggle('hidden', tab === 'login');
+  $('auth-btn-text').textContent = tab === 'login' ? '로그인' : '가입하기';
+  $('auth-error').classList.add('hidden');
+}
+
+async function doAuth() {
+  const id = $('auth-id').value.trim();
+  const pw = $('auth-pw').value;
+  const name = $('auth-name')?.value?.trim();
+  const team = $('auth-team')?.value?.trim();
+
+  if (!id || !pw) { showAuthError('아이디와 비밀번호를 입력해주세요'); return; }
+
+  if (authTab === 'register') {
+    if (!name) { showAuthError('이름을 입력해주세요'); return; }
+    const r = await api('/api/register', { method: 'POST', body: JSON.stringify({ username: id, password: pw, name, team }) });
+    if (r.error) { showAuthError(r.error); return; }
+  }
+
+  const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ username: id, password: pw }) });
+  if (r.error) { showAuthError(r.error); return; }
+
+  currentUser = r;
+  $('nav-user-name').textContent = `${r.name}${r.team ? ' · ' + r.team : ''}`;
+  $('auth-page').classList.add('hidden');
+  $('main-app').classList.remove('hidden');
+  await loadAll();
+  goto('dash');
+}
+
+function showAuthError(msg) {
+  const el = $('auth-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+async function doLogout() {
+  await api('/api/logout', { method: 'POST' });
+  location.reload();
+}
+
+// ── 네비 ──────────────────────────────────────────────
+function goto(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach((t, i) => {
+    t.classList.toggle('active', ['dash','adv','stl'][i] === page);
+  });
+  $(`page-${page}`).classList.add('active');
+  if (page === 'dash') renderDash();
+  if (page === 'adv') renderAdvList();
+  if (page === 'stl') populateStlAdvSelect();
+}
+
+// ── 데이터 로드 ───────────────────────────────────────
+async function loadAll() {
+  [advertisers, settlements] = await Promise.all([
+    api('/api/advertisers'), api('/api/settlements')
+  ]);
+}
+
+// ── 대시보드 ──────────────────────────────────────────
+function renderDash() {
+  const thisM = new Date().toISOString().slice(0, 7);
+  const mStls = settlements.filter(s => (s.start_date || '').slice(0, 7) === thisM);
+  const total = mStls.reduce((t, s) => t + (s.billing_total || 0), 0);
+
+  $('dash-greeting').textContent = `안녕하세요, ${currentUser.name}님 👋`;
+  $('stat-advs').textContent = advertisers.length + '개';
+  $('stat-count').textContent = mStls.length + '건';
+  $('stat-total').textContent = '₩' + fmt(total);
+  $('dash-hint').classList.toggle('hidden', advertisers.length > 0);
+
+  const recent = [...settlements].slice(0, 8);
+  $('recent-card').classList.toggle('hidden', !recent.length);
+  $('recent-body').innerHTML = recent.map(r => `
+    <tr>
+      <td>${r.advertiser || ''}</td>
+      <td style="color:#73726c">${r.campaign || ''}</td>
+      <td style="color:#73726c">${r.media || ''}</td>
+      <td class="text-right">₩${fmt(r.supply_amt)}</td>
+      <td class="text-right" style="font-weight:600">₩${fmt(r.billing_total)}</td>
+    </tr>
+  `).join('');
+}
+
+// ── 광고주 목록 ───────────────────────────────────────
+function renderAdvList() {
+  if (!advertisers.length) {
+    $('adv-list').innerHTML = `
+      <div class="card empty-state">
+        <div class="empty-icon">📋</div>
+        <div style="font-size:15px;margin-bottom:6px">등록된 광고주가 없습니다</div>
+        <div>광고주 추가 후 캠페인 · 매체별 수수료를 설정하세요</div>
+      </div>`;
+    return;
+  }
+  $('adv-list').innerHTML = advertisers.map(a => `
+    <div class="card" style="padding:18px">
+      <div class="flex-between" style="margin-bottom:${a.campaigns?.length ? 12 : 0}px">
+        <div>
+          <div style="font-size:15px;font-weight:600">${a.name}</div>
+          <div style="font-size:12px;color:#73726c;margin-top:2px">${[a.bizNo,a.email,a.contactName].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="openAdvModal(${a.id})">수정</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAdv(${a.id})">삭제</button>
+        </div>
+      </div>
+      ${(a.campaigns || []).map(c => `
+        <div style="background:#faf9f7;border-radius:8px;padding:10px 14px;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:500;margin-bottom:6px">📁 ${c.name}</div>
+          <div>${(c.mediaRates || []).map(mr =>
+            `<span class="badge">${mr.media}: 마크업 ${pct(mr.markupRate)}% / 매체수수료 ${pct(mr.agencyFeeRate)}%${mr.paybackRate > 0 ? ` / 페이백 ${pct(mr.paybackRate)}%` : ''}${(mr.naverAccounts||[]).length > 0 ? ` / 네이버계정 ${mr.naverAccounts.length}개` : ''}</span>`
+          ).join('')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+// ── 광고주 모달 ───────────────────────────────────────
+let campData = [];
+
+function openAdvModal(advId) {
+  editingAdv = advId ? advertisers.find(a => a.id === advId) : null;
+  $('adv-modal-title').textContent = editingAdv ? '광고주 수정' : '광고주 추가';
+  $('adv-name').value = editingAdv?.name || '';
+  $('adv-biz').value = editingAdv?.bizNo || '';
+  $('adv-contact').value = editingAdv?.contactName || '';
+  $('adv-email').value = editingAdv?.email || '';
+  campData = JSON.parse(JSON.stringify(editingAdv?.campaigns || []));
+  renderCamps();
+  $('adv-modal').classList.remove('hidden');
+}
+
+function closeAdvModal() {
+  $('adv-modal').classList.add('hidden');
+}
+
+function renderCamps() {
+  let html = '';
+  campData.forEach((c, ci) => {
+    html += '<div class="camp-box">';
+    html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
+    html += '<input style="flex:1" placeholder="캠페인명 (예: 사방넷)" value="' + (c.name||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].name=this.value">';
+    html += '<button class="btn btn-danger btn-sm" onclick="delCamp(' + ci + ')">삭제</button>';
+    html += '</div>';
+
+    (c.mediaRates || []).forEach((mr, mi) => {
+      // 매체 행
+      html += '<div class="media-row">';
+
+      // 매체 선택
+      html += '<div>' + (mi === 0 ? '<label class="lbl">매체</label>' : '');
+      html += '<select onchange="campData[' + ci + '].mediaRates[' + mi + '].media=this.value">';
+      MEDIA_LIST.forEach(m => {
+        html += '<option' + (m === mr.media ? ' selected' : '') + '>' + m + '</option>';
+      });
+      html += '</select></div>';
+
+      // 마크업 %
+      html += '<div>' + (mi === 0 ? '<label class="lbl">마크업 %</label>' : '');
+      html += '<input type="number" min="0" max="100" step="0.5" value="' + pct(mr.markupRate) + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].markupRate=parseFloat(this.value||0)/100"></div>';
+
+      // 매체수수료 %
+      html += '<div>' + (mi === 0 ? '<label class="lbl">매체수수료 %</label>' : '');
+      html += '<input type="number" min="0" max="100" step="0.5" value="' + pct(mr.agencyFeeRate) + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].agencyFeeRate=parseFloat(this.value||0)/100"></div>';
+
+      // 페이백 %
+      html += '<div>' + (mi === 0 ? '<label class="lbl">페이백 %</label>' : '');
+      html += '<input type="number" min="0" max="100" step="0.5" value="' + pct(mr.paybackRate) + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].paybackRate=parseFloat(this.value||0)/100"></div>';
+
+      // 삭제 버튼
+      html += '<div style="padding-top:' + (mi === 0 ? 18 : 0) + 'px">';
+      html += '<button onclick="delMedia(' + ci + ',' + mi + ')" style="width:32px;height:38px;border:none;background:transparent;cursor:pointer;font-size:18px;color:#888">×</button>';
+      html += '</div></div>';
+
+      // 환율 섹션 (해외 매체용)
+      if (mr.hasFx) {
+        html += '<div style="margin-top:8px;padding:10px 12px;background:#faeeda;border-radius:8px;border:1px solid #FAC775">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+        html += '<span style="font-size:12px;font-weight:500;color:#633806">💱 환율 정보</span>';
+        html += '<button class="btn btn-ghost btn-sm" style="color:#633806;font-size:11px;padding:2px 8px" onclick="removeFx(' + ci + ',' + mi + ')">제거</button>';
+        html += '</div>';
+        html += '<div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">';
+        html += '<div><label style="font-size:11px;color:#73726c;display:block;margin-bottom:4px">통화</label>';
+        html += '<select style="width:100%;padding:5px 8px;border:1px solid #d3d1c7;border-radius:6px;font-size:12px" onchange="campData[' + ci + '].mediaRates[' + mi + '].fxCurrency=this.value">';
+        ['USD','EUR','GBP','JPY','CNY','SGD','AUD','CAD'].forEach(c => {
+          html += '<option' + (mr.fxCurrency === c ? ' selected' : '') + '>' + c + '</option>';
+        });
+        html += '</select></div>';
+        html += '<div><label style="font-size:11px;color:#73726c;display:block;margin-bottom:4px">환율 (원)</label>';
+        html += '<input type="number" min="0" step="0.01" placeholder="예: 1380.50" value="' + (mr.fxRate || '') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].fxRate=parseFloat(this.value||0)" style="width:100%;padding:5px 8px;border:1px solid #d3d1c7;border-radius:6px;font-size:12px"></div>';
+        html += '</div></div>';
+      } else {
+        html += '<div style="margin-top:6px">';
+        html += '<button class="btn btn-ghost btn-sm" style="color:#ba7517;font-size:11px;padding:2px 8px" onclick="addFx(' + ci + ',' + mi + ')">💱 환율 추가</button>';
+        html += '</div>';
+      }
+
+      // 네이버/구글 계정번호 섹션
+      const isNaver = mr.media && mr.media.includes('네이버');
+      const isGFA = mr.media && (mr.media === '네이버GFA' || mr.media.includes('GFA'));
+      const isGoogle = mr.media && mr.media.includes('구글');
+      const isMeta = mr.media && (mr.media.includes('메타') || mr.media.includes('Meta') || mr.media.includes('페이스북'));
+      const isTwitter = mr.media && (mr.media.includes('트위터') || mr.media.includes('Twitter') || mr.media.includes('X(트위터)'));
+      const isCriteo = mr.media && mr.media.includes('크리테오');
+      const isKakao = mr.media && mr.media.includes('카카오');
+      const isWB = mr.media && mr.media.includes('와이즈버즈');
+      if (isNaver || isGFA || isGoogle || isMeta || isTwitter || isCriteo || isKakao || (isWB && mr.media.includes('Meta'))) {
+        const color = isNaver ? '#0c447c' : isGoogle ? '#185fa5' : isMeta ? '#3C3489' : '#185fa5';
+        const bg = isNaver ? '#f0f8ff' : isGoogle ? '#e8f4fb' : isMeta ? '#EEEDFE' : '#e8f4fb';
+        const border = isNaver ? '#b5d4f4' : isGoogle ? '#85b7eb' : isMeta ? '#AFA9EC' : '#85b7eb';
+        const label = (isNaver || isGFA) ? '📋 네이버 계정번호 (비고란 숫자)' : isGoogle ? '🔵 구글 계정번호 (예: 196-947-7609)' : isMeta ? '📘 메타 Account Id / Group (인보이스 내 고정번호)' : isCriteo ? '📈 크리테오 Account Name (예: Locknlockmall KR)' : isKakao ? '[카카오] 자산ID 또는 월렛ID' : (isWB && mr.media.includes('Meta')) ? '🐦 와이즈버즈 Meta 광고계정 ID (_519634553531129_ 형태)' : '🐦 트위터 Account No. (예: 16171)';
+        html += '<div style="margin-top:8px;padding:10px 12px;background:' + bg + ';border-radius:8px;border:1px solid ' + border + '">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+        html += '<span style="font-size:12px;font-weight:500;color:' + color + '">' + label + '</span>';
+        html += '<button class="btn btn-ghost btn-sm" style="color:' + color + ';font-size:11px;padding:2px 8px" onclick="addNaverAcct(' + ci + ',' + mi + ')">+ 계정 추가</button>';
+        html += '</div>';
+        (mr.naverAccounts || []).forEach((a, ai) => {
+          html += '<div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;margin-bottom:6px;align-items:center">';
+          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="font-size:12px;padding:5px 8px">';
+          html += '<input placeholder="계정명 (예: 사방넷SA)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="font-size:12px;padding:5px 8px">';
+          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:24px;height:28px;border:none;background:transparent;cursor:pointer;color:#888;font-size:16px">×</button>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+    });
+
+    html += '<button class="btn btn-ghost btn-sm" style="padding:4px 0;color:#73726c" onclick="addMedia(' + ci + ')">+ 매체 추가</button>';
+    html += '<button class="btn btn-ghost btn-sm" style="padding:4px 0;color:#9b59b6;margin-left:8px" onclick="addWbMedia(' + ci + ')">+ 와이즈버즈 매체 추가</button>';
+    html += '</div>';
+  });
+  $('camp-list').innerHTML = html;
+}
+
+function addCamp() {
+  campData.push({ name: '', mediaRates: [] });
+  renderCamps();
+}
+function delCamp(i) {
+  campData.splice(i, 1);
+  renderCamps();
+}
+function addMedia(ci) {
+  campData[ci].mediaRates.push({ media: '구글', markupRate: 0.1, agencyFeeRate: 0, paybackRate: 0, naverAccounts: [], wbMedia: '' });
+  renderCamps();
+}
+function addNaverAcct(ci, mi) {
+  if (!campData[ci].mediaRates[mi].naverAccounts) campData[ci].mediaRates[mi].naverAccounts = [];
+  campData[ci].mediaRates[mi].naverAccounts.push({ accountNo: '', accountName: '' });
+  renderCamps();
+}
+function delNaverAcct(ci, mi, ai) {
+  campData[ci].mediaRates[mi].naverAccounts.splice(ai, 1);
+  renderCamps();
+}
+function addFx(ci, mi) {
+  campData[ci].mediaRates[mi].hasFx = true;
+  campData[ci].mediaRates[mi].fxCurrency = campData[ci].mediaRates[mi].fxCurrency || 'USD';
+  campData[ci].mediaRates[mi].fxRate = campData[ci].mediaRates[mi].fxRate || 0;
+  renderCamps();
+}
+function removeFx(ci, mi) {
+  campData[ci].mediaRates[mi].hasFx = false;
+  campData[ci].mediaRates[mi].fxCurrency = '';
+  campData[ci].mediaRates[mi].fxRate = 0;
+  renderCamps();
+}
+function delMedia(ci, mi) {
+  campData[ci].mediaRates.splice(mi, 1);
+  renderCamps();
+}
+
+async function saveAdv() {
+  const name = $('adv-name').value.trim();
+  if (!name) { alert('광고주명을 입력해주세요'); return; }
+  const body = {
+    name, bizNo: $('adv-biz').value, email: $('adv-email').value,
+    contactName: $('adv-contact').value, campaigns: campData
+  };
+  if (editingAdv) {
+    await api(`/api/advertisers/${editingAdv.id}`, { method: 'PUT', body: JSON.stringify(body) });
+  } else {
+    await api('/api/advertisers', { method: 'POST', body: JSON.stringify(body) });
+  }
+  closeAdvModal();
+  advertisers = await api('/api/advertisers');
+  renderAdvList();
+}
+
+async function deleteAdv(id) {
+  if (!confirm('삭제하시겠습니까?')) return;
+  await api(`/api/advertisers/${id}`, { method: 'DELETE' });
+  advertisers = await api('/api/advertisers');
+  renderAdvList();
+}
+
+// ── 정산 처리 ─────────────────────────────────────────
+function populateStlAdvSelect() {
+  const sel = $('stl-adv');
+  sel.innerHTML = '<option value="">선택하세요</option>' +
+    advertisers.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  $('stl-camp').innerHTML = '<option value="">선택하세요</option>';
+  $('stl-camp').disabled = true;
+}
+
+function onStlAdvChange() {
+  const advId = parseInt($('stl-adv').value);
+  const adv = advertisers.find(a => a.id === advId);
+  const sel = $('stl-camp');
+  if (!adv) { sel.innerHTML = '<option value="">선택하세요</option>'; sel.disabled = true; return; }
+  sel.innerHTML = '<option value="">선택하세요</option>' +
+    (adv.campaigns || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.disabled = false;
+}
+
+function stlNext1() {
+  const advId = parseInt($('stl-adv').value);
+  const campId = parseInt($('stl-camp').value);
+  const period = $('stl-period').value;
+  if (!advId || !campId || !period) { alert('모든 항목을 선택해주세요'); return; }
+
+  stlState.adv = advertisers.find(a => a.id === advId);
+  stlState.camp = stlState.adv?.campaigns?.find(c => c.id === campId);
+  stlState.period = period;
+  stlState.billingDate = $('stl-billing-date').value;
+  stlState.inputs = {};
+
+  $('stl-info-label').textContent = `${stlState.adv?.name} · ${stlState.camp?.name} · ${period}`;
+  renderMediaInputs();
+  showStep(2);
+}
+
+function renderMediaInputs() {
+  const mrs = stlState.camp?.mediaRates || [];
+  $('stl-media-inputs').innerHTML = mrs.map((mr, i) => `
+    <div class="stl-media-box" id="mbox-${i}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px;font-weight:600">${mr.media}</span>
+        <span class="badge">마크업 ${pct(mr.markupRate)}% · 매체수수료 ${pct(mr.agencyFeeRate)}%${mr.paybackRate > 0 ? ` · 페이백 ${pct(mr.paybackRate)}%` : ''}</span>
+        <span id="mbox-check-${i}" style="margin-left:auto;font-size:12px;color:#1D9E75;font-weight:500;display:none">✓ 입력됨</span>
+      </div>
+      <div class="stl-input-grid">
+        <div><label class="lbl">공급가액 (VAT 별도) *</label>
+          <input id="mi-amt-${i}" placeholder="118,997,968" oninput="onAmtChange(${i})">
+        </div>
+        <div><label class="lbl">계정 ID</label><input id="mi-id-${i}" placeholder="계정 ID"></div>
+        <div><label class="lbl">전월 오차 (차감: -)</label><input id="mi-diff-${i}" placeholder="0"></div>
+        <div><label class="lbl">비고</label><input id="mi-note-${i}" placeholder="참고사항"></div>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${mr.media && (mr.media === '네이버GFA' || mr.media.includes('GFA')) ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-gfa-${i}').click()">📊 네이버GFA XLS 파싱</button>
+          <input type="file" id="mfile-gfa-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseGfaFile(${i}, this)">
+        ` : mr.media && mr.media.includes('구글') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-google-${i}').click()">🔵 구글 ZIP/PDF 파싱</button>
+          <input type="file" id="mfile-google-${i}" accept=".zip,.pdf" style="display:none" onchange="parseGoogleFile(${i}, this)">
+        ` : mr.media && (mr.media.includes('메타') || mr.media.includes('Meta') || mr.media.includes('페이스북')) ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-meta-${i}').click()">📘 메타 ZIP/PDF 파싱</button>
+          <input type="file" id="mfile-meta-${i}" accept=".zip,.pdf" style="display:none" onchange="parseMetaFile(${i}, this)">
+        ` : mr.media && (mr.media.includes('트위터') || mr.media.includes('Twitter') || mr.media.includes('X(트위터)')) ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-twitter-${i}').click()">🐦 트위터(X) ZIP/PDF 파싱</button>
+          <input type="file" id="mfile-twitter-${i}" accept=".zip,.pdf" style="display:none" onchange="parseTwitterFile(${i}, this)">
+        ` : mr.media && mr.media.includes('크리테오') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-criteo-${i}').click()">📈 크리테오 XLS 파싱</button>
+          <input type="file" id="mfile-criteo-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseCriteoFile(${i}, this)">
+        ` : mr.media && mr.media.includes('카카오') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-kakao-${i}').click()">[카카오] XLS 파싱</button>
+          <input type="file" id="mfile-kakao-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseKakaoFile(${i}, this)">
+        ` : mr.media && mr.media.includes('와이즈버즈') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-wb-${i}').click()">🐦 와이즈버즈 XLSX 파싱</button>
+          <input type="file" id="mfile-wb-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseWbFile(${i}, this)">
+        ` : `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-${i}').click()">📎 네이버 XLS 파싱</button>
+          <input type="file" id="mfile-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseFile(${i}, this)">
+        `}
+        <span id="mfile-note-${i}" style="font-size:11px;color:#73726c"></span>
+      </div>
+      <div id="mfile-detail-${i}"></div>
+    </div>
+  `).join('');
+}
+
+function onAmtChange(i) {
+  const val = $(`mi-amt-${i}`).value;
+  const has = val && parseFloat(val.replace(/,/g,'')) > 0;
+  $(`mbox-${i}`).classList.toggle('filled', !!has);
+  $(`mbox-check-${i}`).style.display = has ? 'inline' : 'none';
+}
+
+function triggerFile(i) { $(`mfile-${i}`).click(); }
+
+async function parseFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/naver', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    // 계정번호별 내역 표시
+    const byAcct = data.data;
+    const detailHtml = Object.entries(byAcct).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${v.accountNo || key}</span>
+          ${v.accountName ? ` · ${v.accountName}` : ''}
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#f0faf6;border-radius:8px;border:1px solid #5DCAA5">
+        <div style="font-size:11px;font-weight:500;color:#0F6E56;margin-bottom:6px">계정별 내역</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>
+    `;
+
+    // 등록되지 않은 계정 안내
+    if (data.allAccounts && naverAccounts.length > 0) {
+      const regNos = naverAccounts.map(a => a.accountNo);
+      const unknown = data.allAccounts.filter(([no]) => !regNos.includes(no));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외됨: ${unknown.map(([no,nm])=>`${no}(${nm})`).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '금액을 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+async function parseGoogleFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중... (파일이 크면 시간이 걸릴 수 있어요)';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/google', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([id, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #e6f1fb">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${id}</span>
+          ${v.accountName ? ` · ${v.accountName}` : ''}
+          <span style="color:#888;font-size:11px;margin-left:4px">${v.filename ? '(' + v.filename.split('/').pop() + ')' : ''}</span>
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.subtotal)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#e6f1fb;border-radius:8px;border:1px solid #85b7eb">
+        <div style="font-size:11px;font-weight:500;color:#0c447c;margin-bottom:6px">🔵 구글 계정별 소계 (VAT 별도)</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountId));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외: ${unknown.map(a=>a.accountId).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (${allAccts.length}개 PDF)`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 — ${allAccts.length}개 PDF 전체 합산`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '계정 정보를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseMetaFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/meta', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    // 인보이스번호를 계정ID에 자동 입력 (첫 번째 항목 기준)
+    const firstItem = Object.values(data.data)[0];
+    if (firstItem?.invoiceNo) {
+      const idInput = $(`mi-id-${i}`);
+      if (idInput && !idInput.value) idInput.value = firstItem.invoiceNo;
+    }
+
+    // 내역 표시
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">Invoice #${v.invoiceNo}</span>
+          ${v.advertiser ? ` · ${v.advertiser}` : ''}
+          ${v.period ? ` · ${v.period}` : ''}
+          <span style="font-size:11px;color:#888;margin-left:4px">(계정: ${v.accountId})</span>
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.subtotal)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#eaf3de;border-radius:8px;border:1px solid #97c459">
+        <div style="font-size:11px;font-weight:500;color:#27500a;margin-bottom:6px">📘 메타 인보이스 내역 (소계 기준)</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountId));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외: ${unknown.map(a=>a.accountId).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (${allAccts.length}개 인보이스)`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 — ${allAccts.length}개 인보이스 전체 합산`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseTwitterFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/twitter', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    // Invoice No를 계정ID에 자동 입력
+    const firstItem = Object.values(data.data)[0];
+    if (firstItem?.invoiceNo) {
+      const idInput = $(`mi-id-${i}`);
+      if (idInput && !idInput.value) idInput.value = firstItem.invoiceNo;
+    }
+
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">Invoice #${v.invoiceNo}</span>
+          ${v.advertiser ? ` · ${v.advertiser}` : ''}
+          ${v.period ? ` · ${v.period}` : ''}
+          <span style="font-size:11px;color:#888;margin-left:4px">(Account: ${v.accountId})</span>
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.subtotal)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#e6f1fb;border-radius:8px;border:1px solid #85b7eb">
+        <div style="font-size:11px;font-weight:500;color:#0c447c;margin-bottom:6px">🐦 트위터(X) 인보이스 내역 (소계 기준)</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountId));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외: ${unknown.map(a=>a.accountId).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (${allAccts.length}개 인보이스)`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 — ${allAccts.length}개 인보이스 전체 합산`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseGfaFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/naver-gfa', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${v.accountNo}</span>
+          ${v.accountName ? ` · ${v.accountName}` : ''}
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#f0faf6;border-radius:8px;border:1px solid #5DCAA5">
+        <div style="font-size:11px;font-weight:500;color:#0F6E56;margin-bottom:6px">📊 네이버GFA 계정별 내역</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountNo));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = '✓ 파싱 완료';
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 ${allAccts.length}개 계정 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseCriteoFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/criteo', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;font-weight:500;color:#5f5e5a">${v.accountName}</span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#faeeda;border-radius:8px;border:1px solid #FAC775">
+        <div style="font-size:11px;font-weight:500;color:#633806;margin-bottom:6px">📈 크리테오 계정별 Invoicing Amount</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo.toLowerCase().trim());
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountNo.toLowerCase().trim()));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = '✓ 파싱 완료';
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 ${allAccts.length}개 계정 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseKakaoFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/kakao', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${v.accountNo}</span> · ${v.accountName}
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#FFFAE6;border-radius:8px;border:1px solid #FAE100">
+        <div style="font-size:11px;font-weight:500;color:#3A1C00;margin-bottom:6px">카카오 계산서위임 내역</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountNo));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 ${unknown.length}개 제외</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = '✓ 파싱 완료';
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 ${allAccts.length}개 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+const WB_MEDIA_LIST = ['Meta', 'X(Twitter)', 'TikTok', 'Toss', '당근', 'Apple'];
+
+function addWbMedia(ci) {
+  // 와이즈버즈 매체 선택 팝업 대신 인라인 추가
+  WB_MEDIA_LIST.forEach(m => {
+    if (!campData[ci].mediaRates.find(mr => mr.media === `와이즈버즈_${m}`)) {
+      campData[ci].mediaRates.push({
+        media: `와이즈버즈_${m}`,
+        markupRate: 0, agencyFeeRate: 0, paybackRate: 0,
+        naverAccounts: [],
+        wbMedia: m,  // 와이즈버즈 내 매체명
+      });
+    }
+  });
+  renderCamps();
+}
+
+async function parseWbFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  // 이 매체가 와이즈버즈_Meta 형태면 wbMedia는 'Meta'
+  const wbMedia = mr?.wbMedia || mr?.media?.replace('와이즈버즈_', '') || '';
+  const naverAccounts = mr?.naverAccounts || [];
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('media', wbMedia);
+  // 메타 광고계정 ID 전달
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('metaAccounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/wisebirds', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  const mediaResult = data.result?.[wbMedia];
+  if (!mediaResult || mediaResult.total === 0) {
+    $(`mfile-note-${i}`).textContent = `${wbMedia} 금액이 없거나 0원입니다`;
+    // 전체 요약 보여주기
+    const summaryHtml = Object.entries(data.summary || {}).map(([m, v]) =>
+      `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
+        <span>${m}</span><span>₩${fmt(v)}</span>
+      </div>`
+    ).join('');
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:8px;padding:10px 12px;background:#f5f4f0;border-radius:8px;font-size:12px">
+        <div style="font-weight:500;margin-bottom:6px;color:#73726c">📋 ${data.sheetName} 전체 요약</div>
+        ${summaryHtml}
+      </div>`;
+    return;
+  }
+
+  $(`mi-amt-${i}`).value = Math.round(mediaResult.total).toString();
+  onAmtChange(i);
+
+  // 메타 상세내역
+  let detailHtml = '';
+  if (wbMedia === 'Meta' && Object.keys(mediaResult.detail || {}).length > 0) {
+    detailHtml = Object.entries(mediaResult.detail).map(([id, v]) =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:11px;color:#5f5e5a"><span style="font-weight:500">${v.advertiser}</span> <span style="color:#888">${id}</span></span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>`
+    ).join('');
+  }
+
+  $(`mfile-detail-${i}`).innerHTML = `
+    <div style="margin-top:10px;padding:10px 12px;background:#f3eeff;border-radius:8px;border:1px solid #c9b3f5">
+      <div style="font-size:11px;font-weight:500;color:#6c3eb9;margin-bottom:6px">🐦 와이즈버즈 ${wbMedia} (${data.sheetName})</div>
+      ${detailHtml || ''}
+      <div style="display:flex;justify-content:space-between;padding-top:6px;font-weight:600;font-size:13px">
+        <span>합계</span><span>₩${fmt(mediaResult.total)}</span>
+      </div>
+    </div>`;
+
+  $(`mfile-note-${i}`).textContent = `✓ 파싱 완료`;
+}
+
+function stlCalc() {
+  const mrs = stlState.camp?.mediaRates || [];
+  const [y, m] = stlState.period.split('-');
+  const lastDay = new Date(+y, +m, 0).getDate();
+
+  stlState.rows = mrs.map((mr, i) => {
+    const amt = parseFloat(($(`mi-amt-${i}`)?.value || '0').replace(/,/g, '')) || 0;
+    if (!amt) return null;
+    const sa = amt, markup = sa * mr.markupRate, agencyFee = sa * mr.agencyFeeRate, total = sa + markup;
+    const pd = parseFloat(($(`mi-diff-${i}`)?.value || '0').replace(/,/g, '')) || 0;
+    const bAd = sa + pd, bMk = markup, bTotal = bAd + bMk;
+    return {
+      no: i + 1, advertiser: stlState.adv?.name, campaign: stlState.camp?.name, media: mr.media,
+      accountId: $(`mi-id-${i}`)?.value || '',
+      period: `${y}년 ${+m}월`,
+      startDate: `${stlState.period}-01`, endDate: `${stlState.period}-${String(lastDay).padStart(2,'0')}`,
+      supplyAmt: sa, markupRate: mr.markupRate, markup, agencyFeeRate: mr.agencyFeeRate, agencyFee,
+      paybackRate: mr.paybackRate, total, billingDate: stlState.billingDate,
+      prevDiff: pd, billingAdCost: bAd, billingMarkup: bMk, billingTotal: bTotal, diff: bAd - sa,
+      note: $(`mi-note-${i}`)?.value || '',
+      fxCurrency: mr.hasFx ? (mr.fxCurrency || 'USD') : 'KRW',
+      fxRate: mr.hasFx ? (mr.fxRate || 0) : null,
+    };
+  }).filter(Boolean);
+
+  if (!stlState.rows.length) { alert('최소 하나 이상의 금액을 입력해주세요'); return; }
+
+  $('stl-result-label').textContent = `${stlState.adv?.name} · ${stlState.camp?.name} · ${stlState.period}`;
+  const totalSA = stlState.rows.reduce((t, r) => t + r.supplyAmt, 0);
+  const totalBT = stlState.rows.reduce((t, r) => t + r.billingTotal, 0);
+  const totalPD = stlState.rows.reduce((t, r) => t + r.prevDiff, 0);
+
+  $('stl-result-body').innerHTML = stlState.rows.map(r => `
+    <tr>
+      <td style="font-weight:600">${r.media}</td>
+      <td class="text-right">₩${fmt(r.supplyAmt)}</td>
+      <td class="text-right">${pct(r.markupRate)}%</td>
+      <td class="text-right">${r.markup > 0 ? '₩' + fmt(r.markup) : '-'}</td>
+      <td class="text-right">${pct(r.agencyFeeRate)}%</td>
+      <td class="text-right">${r.agencyFee > 0 ? '₩' + fmt(r.agencyFee) : '-'}</td>
+      <td class="text-right">₩${fmt(r.total)}</td>
+      <td class="text-right ${r.prevDiff < 0 ? 'tag-red' : r.prevDiff > 0 ? 'tag-green' : ''}">${r.prevDiff ? fmt(r.prevDiff) : '-'}</td>
+      <td class="text-right" style="font-weight:600">₩${fmt(r.billingTotal)}</td>
+    </tr>
+  `).join('') + `
+    <tr class="total-row">
+      <td>합계</td>
+      <td class="text-right">₩${fmt(totalSA)}</td>
+      <td colspan="5"></td>
+      <td class="text-right">${fmt(totalPD)}</td>
+      <td class="text-right">₩${fmt(totalBT)}</td>
+    </tr>`;
+  showStep(3);
+}
+
+async function stlFillTemplate(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const adv = stlState.adv;
+  const camp = stlState.camp;
+
+  if (!stlState.rows.length) {
+    alert('먼저 계산하기를 실행해주세요');
+    input.value = '';
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('template', file);
+  fd.append('rows', JSON.stringify(stlState.rows));
+  fd.append('advName', adv?.name || '');
+  fd.append('campName', camp?.name || '');
+  fd.append('period', stlState.period);
+  fd.append('billingDate', stlState.billingDate || '');
+  fd.append('advBizNo', adv?.bizNo || '');
+  fd.append('advEmail', adv?.email || '');
+
+  const btn = input.closest('label');
+  if (btn) btn.style.opacity = '0.6';
+
+  let r;
+  try {
+    r = await fetch('/api/export/fill-template', {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin'
+    });
+  } catch(e) {
+    if (btn) btn.style.opacity = '1';
+    input.value = '';
+    alert('네트워크 오류: ' + e.message);
+    return;
+  }
+
+  if (btn) btn.style.opacity = '1';
+  input.value = '';
+
+  if (!r.ok) {
+    let msg = '알 수 없는 오류 (status: ' + r.status + ')';
+    try { const err = await r.json(); msg = err.error || msg; } catch {}
+    alert('오류: ' + msg);
+    return;
+  }
+
+  // Content-Type 확인
+  const ct = r.headers.get('Content-Type') || '';
+  if (!ct.includes('spreadsheet') && !ct.includes('octet')) {
+    const txt = await r.text();
+    alert('서버 오류: ' + txt.slice(0, 200));
+    return;
+  }
+
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `세금계산서발행요청파일_${adv?.name}_${camp?.name}_${stlState.period}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function stlExport() {
+  const adv = stlState.adv;
+  const camp = stlState.camp;
+  const r = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({
+      rows: stlState.rows,
+      advName: adv?.name, campName: camp?.name,
+      period: stlState.period, billingDate: stlState.billingDate,
+      advBizNo: adv?.bizNo, advEmail: adv?.email
+    })
+  });
+  if (!r.ok) { alert('내보내기 오류'); return; }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `정산_${adv?.name}_${camp?.name}_${stlState.period}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function stlSave() {
+  await api('/api/settlements', { method: 'POST', body: JSON.stringify(stlState.rows) });
+  settlements = await api('/api/settlements');
+  $('stl-done-label').textContent = `${stlState.adv?.name} · ${stlState.camp?.name} · ${stlState.period}`;
+  showStep(4);
+}
+
+function stlBack(from) { showStep(from); }
+function stlReset() {
+  stlState = { adv: null, camp: null, period: '', billingDate: '', inputs: {}, rows: [] };
+  populateStlAdvSelect();
+  $('stl-period').value = '';
+  $('stl-billing-date').value = '';
+  showStep(1);
+}
+
+function showStep(n) {
+  [1,2,3,4].forEach(i => {
+    $(`stl-step${i}`)?.classList.toggle('hidden', i !== n);
+    const num = $(`snum${i}`);
+    const lbl = $(`slbl${i}`);
+    if (num) { num.className = 'step-num' + (i < n ? ' done' : i === n ? ' active' : ''); num.textContent = i < n ? '✓' : i; }
+    if (lbl) { lbl.className = 'step-label' + (i === n ? ' active' : ''); }
+  });
+}
+
+// ── 초기화 ────────────────────────────────────────────
+window.onload = async () => {
+  const r = await api('/api/me');
+  if (r.id) {
+    currentUser = r;
+    $('nav-user-name').textContent = `${r.name}${r.team ? ' · ' + r.team : ''}`;
+    $('auth-page').classList.add('hidden');
+    $('main-app').classList.remove('hidden');
+    await loadAll();
+    goto('dash');
+  }
+};
+</script>
+</body>
+</html>
