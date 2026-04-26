@@ -16,16 +16,17 @@ app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'settlement_secret_key_change_in_production')
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
-
 # Google OAuth 설정
+app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID', '')
+app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+app.config['GOOGLE_METADATA_URL'] = 'https://accounts.google.com/.well-known/openid-configuration'
+
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_id=app.config['GOOGLE_CLIENT_ID'],
+    client_secret=app.config['GOOGLE_CLIENT_SECRET'],
+    server_metadata_url=app.config['GOOGLE_METADATA_URL'],
     client_kwargs={'scope': 'openid email profile'},
 )
 
