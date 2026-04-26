@@ -187,8 +187,10 @@
       <button class="nav-tab active" onclick="goto('dash')">대시보드</button>
       <button class="nav-tab" onclick="goto('adv')">광고주 관리</button>
       <button class="nav-tab" onclick="goto('stl')">정산 처리</button>
+      <button class="nav-tab" id="nav-admin-btn" onclick="goto('admin')" style="display:none">👑 관리자</button>
     </div>
     <span class="nav-user" id="nav-user-name"></span>
+    <button class="nav-btn" onclick="openProfile()">👤 내 프로필</button>
     <button class="nav-btn" onclick="doLogout()">로그아웃</button>
   </div>
 
@@ -229,6 +231,44 @@
         <button class="btn btn-primary" onclick="openAdvModal(null)">+ 광고주 추가</button>
       </div>
       <div id="adv-list"></div>
+    </div>
+
+    <!-- 관리자 페이지 -->
+    <div id="page-admin" class="page">
+      <div class="page-title">👑 관리자 페이지</div>
+      <div class="page-sub">사용자 권한 관리 및 전체 정산 내역 조회</div>
+
+      <!-- 사용자 관리 -->
+      <div class="card">
+        <div class="card-title">사용자 권한 관리</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--color-background-secondary)">
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">이름</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">이메일</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">팀</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--color-text-secondary)">권한</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--color-text-secondary)">변경</th>
+          </tr></thead>
+          <tbody id="admin-user-list"></tbody>
+        </table>
+      </div>
+
+      <!-- 전체 정산 내역 -->
+      <div class="card">
+        <div class="card-title">전체 정산 내역</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--color-background-secondary)">
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">담당자</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">광고주</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">캠페인</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">매체</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">기간</th>
+            <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--color-text-secondary)">공급가액</th>
+            <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--color-text-secondary)">청구합계</th>
+          </tr></thead>
+          <tbody id="admin-stl-list"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 정산 처리 -->
@@ -406,6 +446,10 @@ async function doAuth() {
   $('auth-page').classList.add('hidden');
   $('main-app').classList.remove('hidden');
   await loadAll();
+  // 관리자/팀장 탭 표시
+  if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+    $('nav-admin-btn').style.display = 'inline-block';
+  }
   goto('dash');
 }
 
@@ -430,6 +474,7 @@ function goto(page) {
   if (page === 'dash') renderDash();
   if (page === 'adv') renderAdvList();
   if (page === 'stl') populateStlAdvSelect();
+  if (page === 'admin') loadAdminPage();
 }
 
 // ── 데이터 로드 ───────────────────────────────────────
@@ -1453,6 +1498,92 @@ function showStep(n) {
   });
 }
 
+
+
+// ── 관리자 ────────────────────────────────────────────
+async function loadAdminPage() {
+  // 사용자 목록
+  const users = await api('/api/admin/users');
+  const ROLE_LABEL = { admin: '👑 관리자', manager: '⭐ 팀장', member: '팀원' };
+  $('admin-user-list').innerHTML = users.map(u => `
+    <tr style="border-bottom:1px solid var(--color-border-tertiary)">
+      <td style="padding:9px 10px;font-weight:500">${u.name || '-'}</td>
+      <td style="padding:9px 10px;color:var(--color-text-secondary);font-size:12px">${u.username}</td>
+      <td style="padding:9px 10px;color:var(--color-text-secondary)">${u.team || '-'}</td>
+      <td style="padding:9px 10px;text-align:center">
+        <span style="padding:2px 10px;border-radius:6px;font-size:12px;font-weight:500;background:${u.role==='admin'?'#fdf3cd':u.role==='manager'?'#e8f4fb':'var(--color-background-secondary)'};color:${u.role==='admin'?'#b45309':u.role==='manager'?'#0c447c':'var(--color-text-secondary)'}">
+          ${ROLE_LABEL[u.role] || '팀원'}
+        </span>
+      </td>
+      <td style="padding:9px 10px;text-align:center">
+        ${u.username === currentUser?.username ? '<span style="font-size:12px;color:var(--color-text-tertiary)">본인</span>' : `
+          <select onchange="setUserRole(${u.id}, this.value)" style="padding:4px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">
+            <option value="member" ${u.role==='member'?'selected':''}>팀원</option>
+            <option value="manager" ${u.role==='manager'?'selected':''}>⭐ 팀장</option>
+            <option value="admin" ${u.role==='admin'?'selected':''}>👑 관리자</option>
+          </select>
+        `}
+      </td>
+    </tr>
+  `).join('');
+
+  // 전체 정산 내역
+  const stls = await api('/api/admin/settlements');
+  $('admin-stl-list').innerHTML = stls.slice(0,100).map(r => `
+    <tr style="border-bottom:1px solid var(--color-border-tertiary)">
+      <td style="padding:8px 10px"><span style="font-weight:500">${r.user_name||'-'}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${r.user_team||''}</span></td>
+      <td style="padding:8px 10px">${r.advertiser||'-'}</td>
+      <td style="padding:8px 10px;color:var(--color-text-secondary)">${r.campaign||'-'}</td>
+      <td style="padding:8px 10px;color:var(--color-text-secondary)">${r.media||'-'}</td>
+      <td style="padding:8px 10px;color:var(--color-text-secondary)">${r.period||'-'}</td>
+      <td style="padding:8px 10px;text-align:right">₩${fmt(r.supply_amt)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:600">₩${fmt(r.billing_total)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--color-text-secondary)">정산 내역이 없습니다</td></tr>';
+}
+
+async function setUserRole(uid, role) {
+  const r = await api(`/api/admin/users/${uid}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+  if (r.error) { alert(r.error); return; }
+  loadAdminPage();
+}
+
+// ── 프로필 ────────────────────────────────────────────
+async function openProfile() {
+  const r = await api('/api/profile');
+  $('profile-email').value = r.username || '';
+  $('profile-name').value  = r.name || '';
+  $('profile-team').value  = r.team || '';
+  $('profile-error').classList.add('hidden');
+  $('profile-modal').classList.remove('hidden');
+}
+
+function closeProfile() {
+  $('profile-modal').classList.add('hidden');
+}
+
+async function saveProfile() {
+  const name = $('profile-name').value.trim();
+  const team = $('profile-team').value.trim();
+  if (!name) {
+    $('profile-error').textContent = '이름을 입력해주세요';
+    $('profile-error').classList.remove('hidden');
+    return;
+  }
+  const r = await api('/api/profile', { method: 'PUT', body: JSON.stringify({ name, team }) });
+  if (r.error) {
+    $('profile-error').textContent = r.error;
+    $('profile-error').classList.remove('hidden');
+    return;
+  }
+  // 네비 이름 업데이트
+  $('nav-user-name').textContent = name + (team ? ` · ${team}` : '');
+  currentUser.name = name;
+  currentUser.team = team;
+  closeProfile();
+  renderDash();
+}
+
 // ── 초기화 ────────────────────────────────────────────
 window.onload = async () => {
   const r = await api('/api/me');
@@ -1466,5 +1597,31 @@ window.onload = async () => {
   }
 };
 </script>
+<!-- 프로필 모달 -->
+<div id="profile-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeProfile()">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">👤 내 프로필</div>
+    <div id="profile-error" class="alert alert-error hidden" style="margin-bottom:14px"></div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label class="lbl">이메일 (구글 계정)</label>
+        <input id="profile-email" style="width:100%;padding:9px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:14px" disabled>
+      </div>
+      <div>
+        <label class="lbl">이름 *</label>
+        <input id="profile-name" style="width:100%;padding:9px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none" placeholder="이름">
+      </div>
+      <div>
+        <label class="lbl">팀명</label>
+        <input id="profile-team" style="width:100%;padding:9px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none" placeholder="예: 3PM-3">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-secondary" onclick="closeProfile()">취소</button>
+      <button class="btn btn-primary" onclick="saveProfile()">저장</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
