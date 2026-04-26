@@ -51,7 +51,7 @@ else:
 
 def init_db():
     tables_sql_pg = [
-        """CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, name TEXT NOT NULL, team TEXT DEFAULT '')""",
+        """CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, name TEXT NOT NULL, team TEXT DEFAULT '', role TEXT DEFAULT 'member')""",
         """CREATE TABLE IF NOT EXISTS advertisers (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT NOT NULL, biz_no TEXT DEFAULT '', email TEXT DEFAULT '', contact_name TEXT DEFAULT '')""",
         """CREATE TABLE IF NOT EXISTS campaigns (id SERIAL PRIMARY KEY, advertiser_id INTEGER NOT NULL, name TEXT NOT NULL, sort_order INTEGER DEFAULT 0)""",
         """CREATE TABLE IF NOT EXISTS media_rates (id SERIAL PRIMARY KEY, campaign_id INTEGER NOT NULL, media TEXT NOT NULL, markup_rate REAL DEFAULT 0, agency_fee_rate REAL DEFAULT 0, payback_rate REAL DEFAULT 0, sort_order INTEGER DEFAULT 0)""",
@@ -177,7 +177,8 @@ def me():
     return jsonify({
         'id': session['user_id'],
         'name': session['user_name'],
-        'team': session['user_team']
+        'team': session['user_team'],
+        'role': session.get('user_role', 'member')
     })
 
 
@@ -198,16 +199,23 @@ def google_callback():
 
     email = user_info.get('email', '')
     name  = user_info.get('name', '')
-    
+    role  = 'admin' if email == SUPERADMIN_EMAIL else 'member'
+
     # DB에서 유저 찾기 또는 생성
     if PG:
         conn = get_db()
         user = db_fetchone(conn, 'SELECT * FROM users WHERE username=?', (email,))
         if not user:
-            uid = db_insert(conn, 'INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
-                           (email, 'GOOGLE_AUTH', name, ''))
+            uid = db_insert(conn, 'INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
+                           (email, 'GOOGLE_AUTH', name, '', role))
             db_commit(conn)
             user = db_fetchone(conn, 'SELECT * FROM users WHERE id=?', (uid,))
+        else:
+            # superadmin이면 role 강제 업데이트
+            if email == SUPERADMIN_EMAIL and user.get('role') != 'admin':
+                db_execute(conn, 'UPDATE users SET role=? WHERE id=?', ('admin', user['id']))
+                db_commit(conn)
+                user['role'] = 'admin'
         conn.close()
     else:
         import sqlite3 as _sq
@@ -215,8 +223,8 @@ def google_callback():
             conn.row_factory = _sq.Row
             user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
             if not user:
-                conn.execute('INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
-                            (email, 'GOOGLE_AUTH', name, ''))
+                conn.execute('INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
+                            (email, 'GOOGLE_AUTH', name, '', role))
                 conn.commit()
                 user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
             user = dict(user)
@@ -225,7 +233,126 @@ def google_callback():
     session['user_id']   = user['id']
     session['user_name'] = user['name']
     session['user_team'] = user.get('team', '')
+    session['user_role'] = user.get('role', 'member')
     return redirect('/')
+
+# ───────────── 프로필 API ──────────────────────────────
+@app.route('/api/profile')
+@require_login
+def get_profile():
+    if PG:
+        conn = get_db()
+        user = db_fetchone(conn, 'SELECT * FROM users WHERE id=?', (session['user_id'],))
+        conn.close()
+    else:
+        import sqlite3 as _sq
+        with _sq.connect('settlement.db') as conn:
+            conn.row_factory = _sq.Row
+            user = dict(conn.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone())
+    return jsonify({
+        'id': user['id'], 'name': user['name'],
+        'team': user.get('team', ''), 'username': user['username']
+    })
+
+@app.route('/api/profile', methods=['PUT'])
+@require_login
+def update_profile():
+    d = request.json
+    name = d.get('name', '').strip()
+    team = d.get('team', '').strip()
+    if not name:
+        return jsonify({'error': '이름을 입력해주세요'}), 400
+    if PG:
+        conn = get_db()
+        db_execute(conn, 'UPDATE users SET name=?, team=? WHERE id=?', (name, team, session['user_id']))
+        db_commit(conn)
+        conn.close()
+    else:
+        import sqlite3 as _sq
+        with _sq.connect('settlement.db') as conn:
+            conn.execute('UPDATE users SET name=?, team=? WHERE id=?', (name, team, session['user_id']))
+    session['user_name'] = name
+    session['user_team'] = team
+    return jsonify({'success': True})
+
+# ───────────── 관리자 API ─────────────────────────────
+def require_admin(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get('user_role') not in ('admin',):
+            return jsonify({'error': '관리자 권한이 필요합니다'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+def require_manager(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get('user_role') not in ('admin', 'manager'):
+            return jsonify({'error': '팀장 이상 권한이 필요합니다'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/admin/users')
+@require_login
+@require_admin
+def admin_get_users():
+    if PG:
+        conn = get_db()
+        users = db_fetchall(conn, 'SELECT id, username, name, team, role FROM users ORDER BY role, name')
+        conn.close()
+    else:
+        import sqlite3 as _sq
+        with _sq.connect('settlement.db') as conn:
+            conn.row_factory = _sq.Row
+            users = [dict(r) for r in conn.execute('SELECT id, username, name, team, role FROM users ORDER BY role, name').fetchall()]
+    return jsonify(users)
+
+@app.route('/api/admin/users/<int:uid>/role', methods=['PUT'])
+@require_login
+@require_admin
+def admin_set_role(uid):
+    role = request.json.get('role', 'member')
+    if role not in ('admin', 'manager', 'member'):
+        return jsonify({'error': '잘못된 역할입니다'}), 400
+    if PG:
+        conn = get_db()
+        db_execute(conn, 'UPDATE users SET role=? WHERE id=?', (role, uid))
+        db_commit(conn)
+        conn.close()
+    else:
+        import sqlite3 as _sq
+        with _sq.connect('settlement.db') as conn:
+            conn.execute('UPDATE users SET role=? WHERE id=?', (role, uid))
+    return jsonify({'success': True})
+
+@app.route('/api/admin/settlements')
+@require_login
+@require_manager
+def admin_get_settlements():
+    """팀장/관리자용 - 전체 정산 내역"""
+    if PG:
+        conn = get_db()
+        rows = db_fetchall(conn, """
+            SELECT s.*, u.name as user_name, u.team as user_team
+            FROM settlements s
+            JOIN users u ON s.user_id = u.id
+            ORDER BY s.created_at DESC LIMIT 500
+        """)
+        conn.close()
+    else:
+        import sqlite3 as _sq
+        with _sq.connect('settlement.db') as conn:
+            conn.row_factory = _sq.Row
+            rows = [dict(r) for r in conn.execute("""
+                SELECT s.*, u.name as user_name, u.team as user_team
+                FROM settlements s
+                JOIN users u ON s.user_id = u.id
+                ORDER BY s.created_at DESC LIMIT 500
+            """).fetchall()]
+    return jsonify(rows)
+
 
 # ───────────── 광고주 API ─────────────────────────────
 def get_adv_full(conn, adv_id):
