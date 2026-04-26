@@ -68,25 +68,133 @@ else:
     PG = False
 
 def init_db():
-    tables_sql_pg = [
-        """CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, name TEXT NOT NULL, team TEXT DEFAULT '', role TEXT DEFAULT 'member')""",
-        """CREATE TABLE IF NOT EXISTS advertisers (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT NOT NULL, biz_no TEXT DEFAULT '', email TEXT DEFAULT '', contact_name TEXT DEFAULT '')""",
-        """CREATE TABLE IF NOT EXISTS campaigns (id SERIAL PRIMARY KEY, advertiser_id INTEGER NOT NULL, name TEXT NOT NULL, sort_order INTEGER DEFAULT 0)""",
-        """CREATE TABLE IF NOT EXISTS media_rates (id SERIAL PRIMARY KEY, campaign_id INTEGER NOT NULL, media TEXT NOT NULL, markup_rate REAL DEFAULT 0, agency_fee_rate REAL DEFAULT 0, payback_rate REAL DEFAULT 0, sort_order INTEGER DEFAULT 0)""",
-        """CREATE TABLE IF NOT EXISTS naver_accounts (id SERIAL PRIMARY KEY, media_rate_id INTEGER NOT NULL, account_no TEXT NOT NULL, account_name TEXT DEFAULT '')""",
-        """CREATE TABLE IF NOT EXISTS settlements (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, advertiser TEXT, campaign TEXT, media TEXT, period TEXT, start_date TEXT, end_date TEXT, supply_amt REAL DEFAULT 0, markup_rate REAL DEFAULT 0, markup REAL DEFAULT 0, agency_fee_rate REAL DEFAULT 0, agency_fee REAL DEFAULT 0, total REAL DEFAULT 0, billing_date TEXT, prev_diff REAL DEFAULT 0, billing_ad_cost REAL DEFAULT 0, billing_markup REAL DEFAULT 0, billing_total REAL DEFAULT 0, diff REAL DEFAULT 0, account_id TEXT DEFAULT '', note TEXT DEFAULT '', fx_currency TEXT DEFAULT '', fx_rate REAL, created_at TEXT)""",
-    ]
     if PG:
         conn = get_db()
         cur = conn.cursor()
-        for sql in tables_sql_pg:
-            cur.execute(sql)
-        conn.commit(); cur.close(); conn.close()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGSERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT NOT NULL,
+                team TEXT DEFAULT '',
+                role TEXT DEFAULT 'member'
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS advertisers (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                name TEXT NOT NULL,
+                biz_no TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                contact_name TEXT DEFAULT ''
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id BIGSERIAL PRIMARY KEY,
+                advertiser_id BIGINT NOT NULL,
+                name TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS media_rates (
+                id BIGSERIAL PRIMARY KEY,
+                campaign_id BIGINT NOT NULL,
+                media TEXT NOT NULL,
+                markup_rate REAL DEFAULT 0,
+                agency_fee_rate REAL DEFAULT 0,
+                payback_rate REAL DEFAULT 0,
+                sort_order INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS naver_accounts (
+                id BIGSERIAL PRIMARY KEY,
+                media_rate_id BIGINT NOT NULL,
+                account_no TEXT NOT NULL,
+                account_name TEXT DEFAULT ''
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settlements (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                advertiser TEXT, campaign TEXT, media TEXT,
+                period TEXT, start_date TEXT, end_date TEXT,
+                supply_amt REAL DEFAULT 0,
+                markup_rate REAL DEFAULT 0, markup REAL DEFAULT 0,
+                agency_fee_rate REAL DEFAULT 0, agency_fee REAL DEFAULT 0,
+                total REAL DEFAULT 0, billing_date TEXT,
+                prev_diff REAL DEFAULT 0, billing_ad_cost REAL DEFAULT 0,
+                billing_markup REAL DEFAULT 0, billing_total REAL DEFAULT 0,
+                diff REAL DEFAULT 0, account_id TEXT DEFAULT '',
+                note TEXT DEFAULT '', fx_currency TEXT DEFAULT '',
+                fx_rate REAL, created_at TEXT
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
     else:
         import sqlite3 as _sq
         with _sq.connect('settlement.db') as conn:
-            for sql in [s.replace('SERIAL', 'INTEGER').replace('PRIMARY KEY)', 'PRIMARY KEY AUTOINCREMENT)') for s in tables_sql_pg]:
-                conn.execute(sql)
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    team TEXT DEFAULT '',
+                    role TEXT DEFAULT 'member'
+                );
+                CREATE TABLE IF NOT EXISTS advertisers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    biz_no TEXT DEFAULT '',
+                    email TEXT DEFAULT '',
+                    contact_name TEXT DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS campaigns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    advertiser_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    sort_order INTEGER DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS media_rates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    campaign_id INTEGER NOT NULL,
+                    media TEXT NOT NULL,
+                    markup_rate REAL DEFAULT 0,
+                    agency_fee_rate REAL DEFAULT 0,
+                    payback_rate REAL DEFAULT 0,
+                    sort_order INTEGER DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS naver_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    media_rate_id INTEGER NOT NULL,
+                    account_no TEXT NOT NULL,
+                    account_name TEXT DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS settlements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    advertiser TEXT, campaign TEXT, media TEXT,
+                    period TEXT, start_date TEXT, end_date TEXT,
+                    supply_amt REAL DEFAULT 0,
+                    markup_rate REAL DEFAULT 0, markup REAL DEFAULT 0,
+                    agency_fee_rate REAL DEFAULT 0, agency_fee REAL DEFAULT 0,
+                    total REAL DEFAULT 0, billing_date TEXT,
+                    prev_diff REAL DEFAULT 0, billing_ad_cost REAL DEFAULT 0,
+                    billing_markup REAL DEFAULT 0, billing_total REAL DEFAULT 0,
+                    diff REAL DEFAULT 0, account_id TEXT DEFAULT '',
+                    note TEXT DEFAULT '', fx_currency TEXT DEFAULT '',
+                    fx_rate REAL, created_at TEXT
+                );
+            """)
 
 init_db()
 
