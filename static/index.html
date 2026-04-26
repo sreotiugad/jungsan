@@ -564,98 +564,119 @@ function closeAdvModal() {
 }
 
 function renderCamps() {
+  const NEEDS_ACCOUNT = ['네이버SA','네이버GFA','네이버NOSP','구글','메타','트위터','X(트위터)','크리테오','카카오SA','카카오모먼트','카카오브검','카카오키워드','카카오톡채널'];
+  const ACCOUNT_LABEL = {
+    '네이버SA': '비고 계정번호', '네이버GFA': '비고 계정번호', '네이버NOSP': '비고 계정번호',
+    '구글': '계정 ID (예: 196-947-7609)', '메타': 'Account Id / Group',
+    '트위터': 'Account No', 'X(트위터)': 'Account No',
+    '크리테오': 'Account Name (예: Locknlockmall KR)',
+    '카카오SA': '자산 ID', '카카오모먼트': '자산/월렛 ID',
+    '카카오브검': '자산 ID', '카카오키워드': '자산 ID', '카카오톡채널': '월렛 ID',
+  };
+  const FX_MEDIA = ['구글','메타','트위터','X(트위터)','틱톡','애플서치애드','크리테오'];
+
   let html = '';
   campData.forEach((c, ci) => {
-    html += '<div class="camp-box">';
-    html += '<div style="display:flex;gap:8px;margin-bottom:12px">';
-    html += '<input style="flex:1" placeholder="캠페인명 (예: 사방넷)" value="' + (c.name||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].name=this.value">';
-    html += '<button class="btn btn-danger btn-sm" onclick="delCamp(' + ci + ')">삭제</button>';
+    html += '<div style="border:1px solid var(--color-border-tertiary);border-radius:10px;padding:16px;margin-bottom:12px;background:var(--color-background-primary)">';
+    
+    // 캠페인명 행
+    html += '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);min-width:60px">캠페인명</div>';
+    html += '<input style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none" placeholder="예: 사방넷" value="' + (c.name||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].name=this.value">';
+    html += '<button class="btn btn-danger btn-sm" onclick="delCamp(' + ci + ')" style="white-space:nowrap">캠페인 삭제</button>';
     html += '</div>';
 
+    // 헤더
+    html += '<div style="display:grid;grid-template-columns:160px 80px 80px 80px 1fr 28px;gap:6px;margin-bottom:6px;padding:0 4px">';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary)">매체</div>';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-align:center">마크업%</div>';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-align:center">매체수수료%</div>';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-align:center">페이백%</div>';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary)">계정번호</div>';
+    html += '<div></div>';
+    html += '</div>';
+
+    // 매체 행들
     (c.mediaRates || []).forEach((mr, mi) => {
-      // 매체 행
-      html += '<div class="media-row">';
+      const needsAcct = NEEDS_ACCOUNT.includes(mr.media);
+      const acctLabel = ACCOUNT_LABEL[mr.media] || '계정번호';
+      const needsFx = FX_MEDIA.includes(mr.media);
+      const accts = mr.naverAccounts || [];
 
+      html += '<div style="margin-bottom:6px;border:1px solid var(--color-border-tertiary);border-radius:8px;overflow:hidden">';
+      
+      // 메인 행
+      html += '<div style="display:grid;grid-template-columns:160px 80px 80px 80px 1fr 28px;gap:6px;padding:8px;background:var(--color-background-secondary);align-items:center">';
+      
       // 매체 선택
-      html += '<div>' + (mi === 0 ? '<label class="lbl">매체</label>' : '');
-      html += '<select onchange="campData[' + ci + '].mediaRates[' + mi + '].media=this.value">';
-      MEDIA_LIST.forEach(m => {
-        html += '<option' + (m === mr.media ? ' selected' : '') + '>' + m + '</option>';
+      html += '<select style="padding:6px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)" onchange="campData[' + ci + '].mediaRates[' + mi + '].media=this.value;renderCamps()">';
+      MEDIA_LIST.forEach(m => { html += '<option' + (m === mr.media ? ' selected' : '') + '>' + m + '</option>'; });
+      html += '</select>';
+      
+      // 수수료 3개
+      ['markupRate','agencyFeeRate','paybackRate'].forEach(key => {
+        const val = Math.round((mr[key]||0)*100);
+        html += '<div style="position:relative"><input type="number" min="0" max="100" step="0.5" value="' + val + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].' + key + '=parseFloat(this.value||0)/100" style="width:100%;padding:6px 18px 6px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:13px;text-align:right;background:var(--color-background-primary);color:var(--color-text-primary)"><span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--color-text-tertiary)">%</span></div>';
       });
-      html += '</select></div>';
 
-      // 마크업 %
-      html += '<div>' + (mi === 0 ? '<label class="lbl">마크업 %</label>' : '');
-      html += '<input type="number" min="0" max="100" step="0.5" value="' + pct(mr.markupRate) + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].markupRate=parseFloat(this.value||0)/100"></div>';
-
-      // 매체수수료 %
-      html += '<div>' + (mi === 0 ? '<label class="lbl">매체수수료 %</label>' : '');
-      html += '<input type="number" min="0" max="100" step="0.5" value="' + pct(mr.agencyFeeRate) + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].agencyFeeRate=parseFloat(this.value||0)/100"></div>';
-
-      // 페이백 %
-      html += '<div>' + (mi === 0 ? '<label class="lbl">페이백 %</label>' : '');
-      html += '<input type="number" min="0" max="100" step="0.5" value="' + pct(mr.paybackRate) + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].paybackRate=parseFloat(this.value||0)/100"></div>';
-
-      // 삭제 버튼
-      html += '<div style="padding-top:' + (mi === 0 ? 18 : 0) + 'px">';
-      html += '<button onclick="delMedia(' + ci + ',' + mi + ')" style="width:32px;height:38px;border:none;background:transparent;cursor:pointer;font-size:18px;color:#888">×</button>';
-      html += '</div></div>';
-
-      // 환율 섹션 (해외 매체용)
-      if (mr.hasFx) {
-        html += '<div style="margin-top:8px;padding:10px 12px;background:#faeeda;border-radius:8px;border:1px solid #FAC775">';
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-        html += '<span style="font-size:12px;font-weight:500;color:#633806">💱 환율 정보</span>';
-        html += '<button class="btn btn-ghost btn-sm" style="color:#633806;font-size:11px;padding:2px 8px" onclick="removeFx(' + ci + ',' + mi + ')">제거</button>';
-        html += '</div>';
-        html += '<div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">';
-        html += '<div><label style="font-size:11px;color:#73726c;display:block;margin-bottom:4px">통화</label>';
-        html += '<select style="width:100%;padding:5px 8px;border:1px solid #d3d1c7;border-radius:6px;font-size:12px" onchange="campData[' + ci + '].mediaRates[' + mi + '].fxCurrency=this.value">';
-        ['USD','EUR','GBP','JPY','CNY','SGD','AUD','CAD'].forEach(c => {
-          html += '<option' + (mr.fxCurrency === c ? ' selected' : '') + '>' + c + '</option>';
-        });
-        html += '</select></div>';
-        html += '<div><label style="font-size:11px;color:#73726c;display:block;margin-bottom:4px">환율 (원)</label>';
-        html += '<input type="number" min="0" step="0.01" placeholder="예: 1380.50" value="' + (mr.fxRate || '') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].fxRate=parseFloat(this.value||0)" style="width:100%;padding:5px 8px;border:1px solid #d3d1c7;border-radius:6px;font-size:12px"></div>';
-        html += '</div></div>';
+      // 계정번호 요약 + 추가 버튼
+      html += '<div style="display:flex;align-items:center;gap:6px">';
+      if (needsAcct) {
+        if (accts.length > 0) {
+          html += '<span style="font-size:11px;color:var(--color-text-secondary);flex:1">' + accts.map(a => a.accountNo || '').filter(Boolean).join(', ') + '</span>';
+        } else {
+          html += '<span style="font-size:11px;color:var(--color-text-tertiary);flex:1">계정 미등록</span>';
+        }
+        html += '<button onclick="addNaverAcct(' + ci + ',' + mi + ')" style="font-size:11px;padding:3px 8px;border:1px solid var(--color-border-secondary);border-radius:5px;background:var(--color-background-primary);cursor:pointer;color:var(--color-text-secondary);white-space:nowrap">+ 추가</button>';
       } else {
-        html += '<div style="margin-top:6px">';
-        html += '<button class="btn btn-ghost btn-sm" style="color:#ba7517;font-size:11px;padding:2px 8px" onclick="addFx(' + ci + ',' + mi + ')">💱 환율 추가</button>';
-        html += '</div>';
+        html += '<span style="font-size:11px;color:var(--color-text-tertiary)">-</span>';
       }
+      if (needsFx) {
+        const fxOn = mr.hasFx;
+        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:11px;color:var(--color-text-secondary);white-space:nowrap"><input type="checkbox" ' + (fxOn?'checked':'') + ' onchange="campData[' + ci + '].mediaRates[' + mi + '].hasFx=this.checked;if(!this.checked){campData[' + ci + '].mediaRates[' + mi + '].fxCurrency='';campData[' + ci + '].mediaRates[' + mi + '].fxRate=0;}renderCamps()"> 환율</label>';
+      }
+      html += '</div>';
+      
+      // 삭제
+      html += '<button onclick="delMedia(' + ci + ',' + mi + ')" style="width:24px;height:28px;border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:16px">×</button>';
+      html += '</div>'; // 메인 행 끝
 
-      // 네이버/구글 계정번호 섹션
-      const isNaver = mr.media && mr.media.includes('네이버');
-      const isGFA = mr.media && (mr.media === '네이버GFA' || mr.media.includes('GFA'));
-      const isGoogle = mr.media && mr.media.includes('구글');
-      const isMeta = mr.media && (mr.media.includes('메타') || mr.media.includes('Meta') || mr.media.includes('페이스북'));
-      const isTwitter = mr.media && (mr.media.includes('트위터') || mr.media.includes('Twitter') || mr.media.includes('X(트위터)'));
-      const isCriteo = mr.media && mr.media.includes('크리테오');
-      const isKakao = mr.media && mr.media.includes('카카오');
-      const isWB = mr.media && mr.media.includes('와이즈버즈');
-      if (isNaver || isGFA || isGoogle || isMeta || isTwitter || isCriteo || isKakao || (isWB && mr.media.includes('Meta'))) {
-        const color = isNaver ? '#0c447c' : isGoogle ? '#185fa5' : isMeta ? '#3C3489' : '#185fa5';
-        const bg = isNaver ? '#f0f8ff' : isGoogle ? '#e8f4fb' : isMeta ? '#EEEDFE' : '#e8f4fb';
-        const border = isNaver ? '#b5d4f4' : isGoogle ? '#85b7eb' : isMeta ? '#AFA9EC' : '#85b7eb';
-        const label = (isNaver || isGFA) ? '📋 네이버 계정번호 (비고란 숫자)' : isGoogle ? '🔵 구글 계정번호 (예: 196-947-7609)' : isMeta ? '📘 메타 Account Id / Group (인보이스 내 고정번호)' : isCriteo ? '📈 크리테오 Account Name (예: Locknlockmall KR)' : isKakao ? '[카카오] 자산ID 또는 월렛ID' : (isWB && mr.media.includes('Meta')) ? '🐦 와이즈버즈 Meta 광고계정 ID (_519634553531129_ 형태)' : '🐦 트위터 Account No. (예: 16171)';
-        html += '<div style="margin-top:8px;padding:10px 12px;background:' + bg + ';border-radius:8px;border:1px solid ' + border + '">';
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-        html += '<span style="font-size:12px;font-weight:500;color:' + color + '">' + label + '</span>';
-        html += '<button class="btn btn-ghost btn-sm" style="color:' + color + ';font-size:11px;padding:2px 8px" onclick="addNaverAcct(' + ci + ',' + mi + ')">+ 계정 추가</button>';
-        html += '</div>';
-        (mr.naverAccounts || []).forEach((a, ai) => {
-          html += '<div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;margin-bottom:6px;align-items:center">';
-          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="font-size:12px;padding:5px 8px">';
-          html += '<input placeholder="계정명 (예: 사방넷SA)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="font-size:12px;padding:5px 8px">';
-          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:24px;height:28px;border:none;background:transparent;cursor:pointer;color:#888;font-size:16px">×</button>';
+      // 계정번호 입력 영역 (inline)
+      if (needsAcct && accts.length > 0) {
+        html += '<div style="padding:8px 10px;background:var(--color-background-primary);border-top:1px solid var(--color-border-tertiary)">';
+        html += '<div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:6px">' + acctLabel + '</div>';
+        accts.forEach((a, ai) => {
+          html += '<div style="display:grid;grid-template-columns:1fr 1.5fr 24px;gap:6px;margin-bottom:6px;align-items:center">';
+          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="padding:6px 10px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">';
+          html += '<input placeholder="계정명 (선택)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="padding:6px 10px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">';
+          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:24px;height:28px;border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:16px">×</button>';
           html += '</div>';
         });
         html += '</div>';
       }
+
+      // 환율 입력 영역
+      if (needsFx && mr.hasFx) {
+        html += '<div style="padding:8px 10px;background:#fdf8f0;border-top:1px solid #e8d5a3;display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center">';
+        html += '<div style="font-size:11px;color:#92600a;font-weight:500">💱 환율</div>';
+        html += '<div style="display:flex;gap:8px;align-items:center">';
+        html += '<select style="padding:5px 8px;border:1px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff" onchange="campData[' + ci + '].mediaRates[' + mi + '].fxCurrency=this.value">';
+        ['USD','EUR','GBP','JPY','CNY','SGD','AUD','CAD'].forEach(cur => {
+          html += '<option' + (mr.fxCurrency === cur ? ' selected' : '') + '>' + cur + '</option>';
+        });
+        html += '</select>';
+        html += '<input type="number" min="0" step="0.01" placeholder="환율 (원)" value="' + (mr.fxRate||'') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].fxRate=parseFloat(this.value||0)" style="flex:1;padding:5px 10px;border:1px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff">';
+        html += '</div></div>';
+      }
+
+      html += '</div>'; // 매체 행 박스 끝
     });
 
-    html += '<button class="btn btn-ghost btn-sm" style="padding:4px 0;color:#73726c" onclick="addMedia(' + ci + ')">+ 매체 추가</button>';
-    html += '<button class="btn btn-ghost btn-sm" style="padding:4px 0;color:#9b59b6;margin-left:8px" onclick="addWbMedia(' + ci + ')">+ 와이즈버즈 매체 추가</button>';
+    // 매체 추가 버튼
+    html += '<div style="display:flex;gap:8px;margin-top:8px">';
+    html += '<button class="btn btn-secondary btn-sm" onclick="addMedia(' + ci + ')">+ 매체 추가</button>';
+    html += '<button class="btn btn-ghost btn-sm" style="color:#9b59b6" onclick="addWbMedia(' + ci + ')">+ 와이즈버즈 매체</button>';
+    html += '</div>';
     html += '</div>';
   });
   $('camp-list').innerHTML = html;
@@ -1551,10 +1572,12 @@ async function setUserRole(uid, role) {
 // ── 프로필 ────────────────────────────────────────────
 async function openProfile() {
   const r = await api('/api/profile');
-  $('profile-email').value = r.username || '';
+  $('profile-email').textContent = r.username || '';
   $('profile-name').value  = r.name || '';
   $('profile-team').value  = r.team || '';
   $('profile-error').classList.add('hidden');
+  const ROLE_LABEL = { admin: '👑 관리자', manager: '⭐ 팀장', member: '팀원' };
+  $('profile-role-badge').textContent = ROLE_LABEL[r.role] || '팀원';
   $('profile-modal').classList.remove('hidden');
 }
 
@@ -1599,26 +1622,38 @@ window.onload = async () => {
 </script>
 <!-- 프로필 모달 -->
 <div id="profile-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeProfile()">
-  <div class="modal" style="max-width:460px">
-    <div class="modal-title">👤 내 프로필</div>
-    <div id="profile-error" class="alert alert-error hidden" style="margin-bottom:14px"></div>
-    <div style="display:flex;flex-direction:column;gap:14px">
+  <div class="modal" style="max-width:440px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:20px">👤</div>
       <div>
-        <label class="lbl">이메일 (구글 계정)</label>
-        <input id="profile-email" style="width:100%;padding:9px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:14px" disabled>
-      </div>
-      <div>
-        <label class="lbl">이름 *</label>
-        <input id="profile-name" style="width:100%;padding:9px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none" placeholder="이름">
-      </div>
-      <div>
-        <label class="lbl">팀명</label>
-        <input id="profile-team" style="width:100%;padding:9px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none" placeholder="예: 3PM-3">
+        <div style="font-size:16px;font-weight:600">내 프로필</div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px" id="profile-role-badge"></div>
       </div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+    <div id="profile-error" class="alert alert-error hidden" style="margin-bottom:14px"></div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- 이메일: 수정 불가 -->
+      <div>
+        <label class="lbl">이메일 (구글 계정)</label>
+        <div style="padding:9px 12px;border:1px solid var(--color-border-tertiary);border-radius:8px;background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:14px;display:flex;align-items:center;gap:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3,5 12,13 21,5"/></svg>
+          <span id="profile-email"></span>
+        </div>
+      </div>
+      <!-- 이름: 수정 가능 -->
+      <div>
+        <label class="lbl">이름 *</label>
+        <input id="profile-name" style="width:100%;padding:9px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none;transition:border-color .15s" placeholder="이름을 입력하세요" onfocus="this.style.borderColor='var(--color-text-primary)'" onblur="this.style.borderColor='var(--color-border-secondary)'">
+      </div>
+      <!-- 팀명: 수정 가능 -->
+      <div>
+        <label class="lbl">팀명</label>
+        <input id="profile-team" style="width:100%;padding:9px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none;transition:border-color .15s" placeholder="예: 3PM-3" onfocus="this.style.borderColor='var(--color-text-primary)'" onblur="this.style.borderColor='var(--color-border-secondary)'">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px;padding-top:16px;border-top:1px solid var(--color-border-tertiary)">
       <button class="btn btn-secondary" onclick="closeProfile()">취소</button>
-      <button class="btn btn-primary" onclick="saveProfile()">저장</button>
+      <button class="btn btn-primary" onclick="saveProfile()">저장하기</button>
     </div>
   </div>
 </div>
