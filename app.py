@@ -178,11 +178,27 @@ def logout():
 def me():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
+    # DB에서 최신 role 직접 읽기
+    try:
+        if PG:
+            conn = get_db()
+            user = db_fetchone(conn, 'SELECT role FROM users WHERE id=?', (session['user_id'],))
+            conn.close()
+            role = user['role'] if user else 'member'
+        else:
+            import sqlite3 as _sq
+            with _sq.connect('settlement.db') as conn:
+                conn.row_factory = _sq.Row
+                u = conn.execute('SELECT role FROM users WHERE id=?', (session['user_id'],)).fetchone()
+                role = dict(u)['role'] if u else 'member'
+    except:
+        role = session.get('user_role', 'member')
     return jsonify({
         'id': session['user_id'],
         'name': session['user_name'],
-        'team': session['user_team'],
-        'role': session.get('user_role', 'member')
+        'team': session.get('user_team', ''),
+        'role': role,
+        'username': session.get('user_email', session.get('user_id', ''))
     })
 
 
@@ -234,10 +250,11 @@ def google_callback():
             user = dict(user)
 
     session.permanent = True
-    session['user_id']   = user['id']
-    session['user_name'] = user['name']
-    session['user_team'] = user.get('team', '')
-    session['user_role'] = user.get('role', 'member')
+    session['user_id']    = user['id']
+    session['user_name']  = user['name']
+    session['user_team']  = user.get('team', '')
+    session['user_role']  = user.get('role', 'member')
+    session['user_email'] = email
     return redirect('/')
 
 # ───────────── 프로필 API ──────────────────────────────
@@ -255,7 +272,8 @@ def get_profile():
             user = dict(conn.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone())
     return jsonify({
         'id': user['id'], 'name': user['name'],
-        'team': user.get('team', ''), 'username': user['username']
+        'team': user.get('team', ''), 'username': user['username'],
+        'role': user.get('role', 'member')
     })
 
 @app.route('/api/profile', methods=['PUT'])
