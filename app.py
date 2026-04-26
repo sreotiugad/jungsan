@@ -184,7 +184,9 @@ def me():
 # ───────────── Google OAuth ──────────────────────────────
 @app.route('/auth/google')
 def google_login():
+    # Railway/프로덕션에서 https 강제
     redirect_uri = url_for('google_callback', _external=True)
+    redirect_uri = redirect_uri.replace('http://', 'https://')
     return google.authorize_redirect(redirect_uri)
 
 @app.route('/auth/google/callback')
