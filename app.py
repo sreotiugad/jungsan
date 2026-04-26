@@ -4,7 +4,8 @@
 접속: http://localhost:5000
 """
 
-from flask import Flask, request, jsonify, session, send_file
+from flask import Flask, request, jsonify, session, send_file, redirect, url_for
+from authlib.integrations.flask_client import OAuth
 import hashlib, os, io
 from datetime import datetime
 import openpyxl
@@ -15,6 +16,18 @@ app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'settlement_secret_key_change_in_production')
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+
+# Google OAuth 설정
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 # PostgreSQL 또는 SQLite 선택
 if DATABASE_URL:
@@ -166,6 +179,50 @@ def me():
         'team': session['user_team']
     })
 
+
+# ───────────── Google OAuth ──────────────────────────────
+@app.route('/auth/google')
+def google_login():
+    redirect_uri = url_for('google_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route('/auth/google/callback')
+def google_callback():
+    token = google.authorize_access_token()
+    user_info = token.get('userinfo')
+    if not user_info:
+        return redirect('/?error=google_failed')
+
+    email = user_info.get('email', '')
+    name  = user_info.get('name', '')
+    
+    # DB에서 유저 찾기 또는 생성
+    if PG:
+        conn = get_db()
+        user = db_fetchone(conn, 'SELECT * FROM users WHERE username=?', (email,))
+        if not user:
+            uid = db_insert(conn, 'INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
+                           (email, 'GOOGLE_AUTH', name, ''))
+            db_commit(conn)
+            user = db_fetchone(conn, 'SELECT * FROM users WHERE id=?', (uid,))
+        conn.close()
+    else:
+        import sqlite3 as _sq
+        with _sq.connect('settlement.db') as conn:
+            conn.row_factory = _sq.Row
+            user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
+            if not user:
+                conn.execute('INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
+                            (email, 'GOOGLE_AUTH', name, ''))
+                conn.commit()
+                user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
+            user = dict(user)
+
+    session.permanent = True
+    session['user_id']   = user['id']
+    session['user_name'] = user['name']
+    session['user_team'] = user.get('team', '')
+    return redirect('/')
 
 # ───────────── 광고주 API ─────────────────────────────
 def get_adv_full(conn, adv_id):
