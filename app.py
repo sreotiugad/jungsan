@@ -15,7 +15,12 @@ from openpyxl.utils import get_column_letter
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'settlement_secret_key_change_in_production')
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('DATABASE_URL', '') != ''  # 프로덕션만 True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+# Railway 리버스 프록시 설정 (https 인식)
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 SUPERADMIN_EMAIL = 'taeyang.park@adef.co.kr'
 
