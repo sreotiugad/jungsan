@@ -13,15 +13,23 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 app = Flask(__name__, static_folder='static', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'settlement_secret_key_change_in_production')
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_NAME'] = 'settlement_session'
+app.secret_key = os.environ.get('SECRET_KEY', 'xK9mP2vL8nQ4rT6wY1aJ3bF5hD7cE0sU')
 
 # Railway 리버스 프록시 설정
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# 서버 사이드 세션 (파일시스템)
+import tempfile
+from flask_session import Session
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = tempfile.gettempdir()
+app.config['SESSION_PERMANENT'] = True
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30  # 30일
+Session(app)
 
 SUPERADMIN_EMAIL = 'taeyang.park@adef.co.kr'
 
@@ -218,50 +226,76 @@ def google_login():
 
 @app.route('/auth/google/callback')
 def google_callback():
-    token = google.authorize_access_token()
-    user_info = token.get('userinfo')
-    if not user_info:
-        return redirect('/?error=google_failed')
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        if not user_info:
+            return redirect('/?error=no_userinfo')
 
-    email = user_info.get('email', '')
-    name  = user_info.get('name', '')
-    role  = 'admin' if email == SUPERADMIN_EMAIL else 'member'
+        email = user_info.get('email', '')
+        name  = user_info.get('name', '') or email.split('@')[0]
+        role  = 'admin' if email == SUPERADMIN_EMAIL else 'member'
 
-    # DB에서 유저 찾기 또는 생성
-    if PG:
-        conn = get_db()
-        user = db_fetchone(conn, 'SELECT * FROM users WHERE username=?', (email,))
-        if not user:
-            uid = db_insert(conn, 'INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
-                           (email, 'GOOGLE_AUTH', name, '', role))
-            db_commit(conn)
-            user = db_fetchone(conn, 'SELECT * FROM users WHERE id=?', (uid,))
-        else:
-            # superadmin이면 role 강제 업데이트
-            if email == SUPERADMIN_EMAIL and user.get('role') != 'admin':
-                db_execute(conn, 'UPDATE users SET role=? WHERE id=?', ('admin', user['id']))
-                db_commit(conn)
-                user['role'] = 'admin'
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.row_factory = _sq.Row
-            user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
-            if not user:
-                conn.execute('INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
+        user_id = None
+        user_role = role
+        user_name = name
+        user_team = ''
+
+        try:
+            if PG:
+                conn = get_db()
+                user = db_fetchone(conn, 'SELECT * FROM users WHERE username=?', (email,))
+                if not user:
+                    user_id = db_insert(conn, 
+                        'INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
+                        (email, 'GOOGLE_AUTH', name, '', role))
+                    db_commit(conn)
+                    user_role = role
+                else:
+                    user_id = user['id']
+                    user_name = user.get('name') or name
+                    user_team = user.get('team', '')
+                    user_role = user.get('role', role)
+                    if email == SUPERADMIN_EMAIL and user_role != 'admin':
+                        db_execute(conn, 'UPDATE users SET role=? WHERE id=?', ('admin', user_id))
+                        db_commit(conn)
+                        user_role = 'admin'
+                conn.close()
+            else:
+                import sqlite3 as _sq
+                with _sq.connect('settlement.db') as conn:
+                    conn.row_factory = _sq.Row
+                    user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
+                    if not user:
+                        conn.execute(
+                            'INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
                             (email, 'GOOGLE_AUTH', name, '', role))
-                conn.commit()
-                user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
-            user = dict(user)
+                        conn.commit()
+                        user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
+                    user = dict(user)
+                    user_id   = user['id']
+                    user_name = user.get('name') or name
+                    user_team = user.get('team', '')
+                    user_role = user.get('role', role)
+        except Exception as db_err:
+            # DB 오류 시에도 세션은 설정 (임시 ID)
+            import hashlib
+            user_id = abs(hash(email)) % 1000000
+            app.logger.error(f'DB error in callback: {db_err}')
 
-    session.permanent = True
-    session['user_id']    = user['id']
-    session['user_name']  = user['name']
-    session['user_team']  = user.get('team', '')
-    session['user_role']  = user.get('role', 'member')
-    session['user_email'] = email
-    return redirect('/')
+        session.permanent = True
+        session['user_id']    = user_id
+        session['user_name']  = user_name
+        session['user_team']  = user_team
+        session['user_role']  = user_role
+        session['user_email'] = email
+        session.modified = True
+
+        return redirect('/')
+
+    except Exception as e:
+        app.logger.error(f'Google callback error: {e}')
+        return redirect('/?error=' + str(type(e).__name__))
 
 # ───────────── 프로필 API ──────────────────────────────
 @app.route('/api/profile')
