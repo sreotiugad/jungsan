@@ -14,6 +14,10 @@ from openpyxl.utils import get_column_letter
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'settlement_secret_key_change_in_production')
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = True
+
+SUPERADMIN_EMAIL = 'taeyang.park@adef.co.kr'
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 # Google OAuth 설정
