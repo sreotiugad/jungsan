@@ -19,17 +19,9 @@ app.secret_key = os.environ.get('SECRET_KEY', 'xK9mP2vL8nQ4rT6wY1aJ3bF5hD7cE0sU'
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# 서버 사이드 세션 (파일시스템)
-import tempfile
-from flask_session import Session
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_FILE_DIR'] = tempfile.gettempdir()
-app.config['SESSION_PERMANENT'] = True
-app.config['SESSION_USE_SIGNER'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30  # 30일
-Session(app)
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30
 
 SUPERADMIN_EMAIL = 'taeyang.park@adef.co.kr'
 
