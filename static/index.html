@@ -214,14 +214,24 @@
       <div class="page-title">👑 관리자 페이지</div>
       <div class="page-sub">사용자 권한 관리 및 전체 정산 내역 조회</div>
 
+      <!-- 팀 관리 -->
+      <div class="card">
+        <div class="card-title">팀 관리</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="new-team-name" placeholder="새 팀명 (예: 5본부 1팀)" style="flex:1;padding:8px 12px;border:1px solid var(--color-border-secondary);border-radius:8px;font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none">
+          <button class="btn btn-primary btn-sm" onclick="addTeam()">+ 추가</button>
+        </div>
+        <div id="team-list" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+
       <!-- 사용자 관리 -->
       <div class="card">
-        <div class="card-title">사용자 권한 관리</div>
+        <div class="card-title">사용자 권한 · 팀 관리</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="background:var(--color-background-secondary)">
             <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">이름</th>
             <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">이메일</th>
-            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">팀</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">소속 팀</th>
             <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--color-text-secondary)">권한</th>
             <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--color-text-secondary)">변경</th>
           </tr></thead>
@@ -1525,27 +1535,47 @@ function showStep(n) {
 
 // ── 관리자 ────────────────────────────────────────────
 async function loadAdminPage() {
-  // 사용자 목록
-  const users = await api('/api/admin/users');
+  const [users, teams] = await Promise.all([api('/api/admin/users'), api('/api/teams')]);
   const ROLE_LABEL = { admin: '👑 관리자', manager: '⭐ 팀장', member: '팀원' };
+
+  // 팀 목록 표시
+  $('team-list').innerHTML = teams.map(t => `
+    <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--color-background-secondary);border:1px solid var(--color-border-secondary);border-radius:20px;font-size:12px">
+      ${t.name}
+      <button onclick="deleteTeam(${t.id})" style="border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:14px;line-height:1;padding:0 2px">×</button>
+    </span>
+  `).join('');
+
+  // 팀 옵션 HTML
+  const teamOptions = teams.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+
+  // 사용자 목록
   $('admin-user-list').innerHTML = users.map(u => `
     <tr style="border-bottom:1px solid var(--color-border-tertiary)">
       <td style="padding:9px 10px;font-weight:500">${u.name || '-'}</td>
       <td style="padding:9px 10px;color:var(--color-text-secondary);font-size:12px">${u.username}</td>
-      <td style="padding:9px 10px;color:var(--color-text-secondary)">${u.team || '-'}</td>
+      <td style="padding:9px 10px">
+        ${u.username === currentUser?.username ? 
+          `<span style="font-size:12px;color:var(--color-text-secondary)">${u.team || '-'}</span>` :
+          `<select onchange="setUserTeam(${u.id}, this.value)" style="padding:4px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">
+            <option value="">팀 선택</option>
+            ${teamOptions}
+          </select>`.replace(`value="${u.team}"`, `value="${u.team}" selected`)
+        }
+      </td>
       <td style="padding:9px 10px;text-align:center">
         <span style="padding:2px 10px;border-radius:6px;font-size:12px;font-weight:500;background:${u.role==='admin'?'#fdf3cd':u.role==='manager'?'#e8f4fb':'var(--color-background-secondary)'};color:${u.role==='admin'?'#b45309':u.role==='manager'?'#0c447c':'var(--color-text-secondary)'}">
           ${ROLE_LABEL[u.role] || '팀원'}
         </span>
       </td>
       <td style="padding:9px 10px;text-align:center">
-        ${u.username === currentUser?.username ? '<span style="font-size:12px;color:var(--color-text-tertiary)">본인</span>' : `
-          <select onchange="setUserRole(${u.id}, this.value)" style="padding:4px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">
+        ${u.username === currentUser?.username ? '<span style="font-size:12px;color:var(--color-text-tertiary)">본인</span>' :
+          `<select onchange="setUserRole(${u.id}, this.value)" style="padding:4px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">
             <option value="member" ${u.role==='member'?'selected':''}>팀원</option>
             <option value="manager" ${u.role==='manager'?'selected':''}>⭐ 팀장</option>
             <option value="admin" ${u.role==='admin'?'selected':''}>👑 관리자</option>
-          </select>
-        `}
+          </select>`
+        }
       </td>
     </tr>
   `).join('');
@@ -1565,6 +1595,25 @@ async function loadAdminPage() {
   `).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--color-text-secondary)">정산 내역이 없습니다</td></tr>';
 }
 
+async function addTeam() {
+  const name = $('new-team-name').value.trim();
+  if (!name) return;
+  const r = await api('/api/teams', { method: 'POST', body: JSON.stringify({ name }) });
+  if (r.error) { alert(r.error); return; }
+  $('new-team-name').value = '';
+  loadAdminPage();
+}
+
+async function deleteTeam(tid) {
+  if (!confirm('팀을 삭제하시겠습니까?')) return;
+  await api(`/api/teams/${tid}`, { method: 'DELETE' });
+  loadAdminPage();
+}
+
+async function setUserTeam(uid, team) {
+  await api(`/api/admin/users/${uid}/team`, { method: 'PUT', body: JSON.stringify({ team }) });
+}
+
 async function setUserRole(uid, role) {
   const r = await api(`/api/admin/users/${uid}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
   if (r.error) { alert(r.error); return; }
@@ -1573,10 +1622,21 @@ async function setUserRole(uid, role) {
 
 // ── 프로필 ────────────────────────────────────────────
 async function openProfile() {
-  const r = await api('/api/profile');
+  const [r, teamsData] = await Promise.all([api('/api/profile'), api('/api/teams')]);
   $('profile-email').textContent = r.username || '';
-  $('profile-name').value  = r.name || '';
-  $('profile-team').value  = r.team || '';
+  $('profile-name').value = r.name || '';
+
+  // 팀 목록 채우기
+  const sel = $('profile-team');
+  sel.innerHTML = '<option value="">팀 선택</option>';
+  (teamsData || []).forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.name;
+    opt.textContent = t.name;
+    if (t.name === r.team) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
   $('profile-error').classList.add('hidden');
   const ROLE_LABEL = { admin: '👑 관리자', manager: '⭐ 팀장', member: '팀원' };
   $('profile-role-badge').textContent = ROLE_LABEL[r.role] || '팀원';
@@ -1657,8 +1717,10 @@ window.onload = async () => {
       </div>
       <!-- 팀명: 수정 가능 -->
       <div>
-        <label class="lbl">팀명</label>
-        <input id="profile-team" style="width:100%;padding:9px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none;transition:border-color .15s" placeholder="예: 3PM-3" onfocus="this.style.borderColor='var(--color-text-primary)'" onblur="this.style.borderColor='var(--color-border-secondary)'">
+        <label class="lbl">소속 팀</label>
+        <select id="profile-team" style="width:100%;padding:9px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none">
+          <option value="">팀 선택</option>
+        </select>
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px;padding-top:16px;border-top:1px solid var(--color-border-tertiary)">
