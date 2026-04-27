@@ -1611,6 +1611,10 @@ async function saveProfile() {
 
 // ── 초기화 ────────────────────────────────────────────
 window.onload = async () => {
+  // URL에서 error 파라미터 제거
+  if (window.location.search) {
+    window.history.replaceState({}, document.title, '/');
+  }
   const r = await api('/api/me');
   if (r.id) {
     currentUser = r;
@@ -1618,6 +1622,10 @@ window.onload = async () => {
     $('auth-page').classList.add('hidden');
     $('main-app').classList.remove('hidden');
     await loadAll();
+    // 관리자/팀장 탭 표시
+    if (r.role === 'admin' || r.role === 'manager') {
+      $('nav-admin-btn').style.display = 'inline-block';
+    }
     goto('dash');
   }
 };
