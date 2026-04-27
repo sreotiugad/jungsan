@@ -621,9 +621,9 @@ function renderCamps() {
       // 계정 버튼
       if (needsAcct) {
         const acctCount = accts.length;
-        const acctColor = acctCount > 0 ? '#0c447c' : '#888';
-        const acctBg = acctCount > 0 ? '#e8f4fb' : '#fff';
-        const acctBorder = acctCount > 0 ? '#85b7eb' : '#ccc';
+        const acctColor = acctCount > 0 ? '#2d5a27' : '#888';
+        const acctBg = acctCount > 0 ? '#edf5ea' : '#fff';
+        const acctBorder = acctCount > 0 ? '#a8c8a0' : '#ccc';
         html += '<button onclick="addNaverAcct(' + ci + ',' + mi + ')" style="padding:5px 10px;border:1.5px solid ' + acctBorder + ';border-radius:6px;background:' + acctBg + ';font-size:11px;color:' + acctColor + ';cursor:pointer;white-space:nowrap;font-weight:500">';
         html += acctCount > 0 ? '계정 ' + acctCount + '개 ＋' : '+ 계정';
         html += '</button>';
@@ -635,13 +635,13 @@ function renderCamps() {
 
       // 계정번호 입력
       if (needsAcct && accts.length > 0) {
-        html += '<div style="padding:10px 12px;background:#f0f7ff;border-top:1.5px solid #c5dff5">';
-        html += '<div style="font-size:11px;color:#0c447c;margin-bottom:8px;font-weight:600">📋 ' + acctLabel + '</div>';
+        html += '<div style="padding:10px 12px;background:#f2f5f0;border-top:1.5px solid #c5d4ba">';
+        html += '<div style="font-size:11px;color:#2d5a27;margin-bottom:8px;font-weight:600">📋 ' + acctLabel + '</div>';
         accts.forEach((a, ai) => {
           html += '<div style="display:grid;grid-template-columns:1fr 1.5fr 26px;gap:6px;margin-bottom:6px;align-items:center">';
-          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="padding:7px 10px;border:1.5px solid #b5d4f4;border-radius:7px;font-size:12px;background:#fff;color:#1a1a18;outline:none">';
-          html += '<input placeholder="계정명 (선택)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="padding:7px 10px;border:1.5px solid #b5d4f4;border-radius:7px;font-size:12px;background:#fff;color:#1a1a18;outline:none">';
-          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:26px;height:26px;border:1px solid #b5d4f4;border-radius:6px;background:#fff;cursor:pointer;color:#aaa;font-size:14px;display:flex;align-items:center;justify-content:center">×</button>';
+          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="padding:7px 10px;border:1.5px solid #b5cba8;border-radius:7px;font-size:12px;background:#fff;color:#1a1a18;outline:none">';
+          html += '<input placeholder="계정명 (선택)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="padding:7px 10px;border:1.5px solid #b5cba8;border-radius:7px;font-size:12px;background:#fff;color:#1a1a18;outline:none">';
+          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:26px;height:26px;border:1px solid #b5cba8;border-radius:6px;background:#fff;cursor:pointer;color:#aaa;font-size:14px;display:flex;align-items:center;justify-content:center">×</button>';
           html += '</div>';
         });
         html += '</div>';
