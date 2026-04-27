@@ -609,7 +609,8 @@ function renderCamps() {
       }
       if (needsFx) {
         const fxOn = mr.hasFx;
-        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:11px;color:var(--color-text-secondary);white-space:nowrap"><input type="checkbox" ' + (fxOn?'checked':'') + ' onchange="campData[' + ci + '].mediaRates[' + mi + '].hasFx=this.checked;if(!this.checked){campData[' + ci + '].mediaRates[' + mi + '].fxCurrency='';campData[' + ci + '].mediaRates[' + mi + '].fxRate=0;}renderCamps()"> 환율</label>';
+        var fxChk = fxOn ? 'checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:11px;color:var(--color-text-secondary);white-space:nowrap"><input type="checkbox" ' + fxChk + ' onchange="toggleFx(' + ci + ',' + mi + ',this.checked)"> 환율</label>';
       }
       html += '</div>';
       
@@ -677,6 +678,14 @@ function addNaverAcct(ci, mi) {
 }
 function delNaverAcct(ci, mi, ai) {
   campData[ci].mediaRates[mi].naverAccounts.splice(ai, 1);
+  renderCamps();
+}
+function toggleFx(ci, mi, checked) {
+  campData[ci].mediaRates[mi].hasFx = checked;
+  if (!checked) {
+    campData[ci].mediaRates[mi].fxCurrency = '';
+    campData[ci].mediaRates[mi].fxRate = 0;
+  }
   renderCamps();
 }
 function addFx(ci, mi) {
