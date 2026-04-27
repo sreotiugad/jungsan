@@ -352,15 +352,15 @@
 <div id="adv-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeAdvModal()">
   <div class="modal">
     <div class="modal-title" id="adv-modal-title">광고주 추가</div>
-    <div class="grid2" style="margin-bottom:18px">
-      <div><label class="lbl">광고주명 *</label><input id="adv-name" placeholder="주식회사 ..."></div>
-      <div><label class="lbl">사업자등록번호</label><input id="adv-biz" placeholder="000-00-00000"></div>
-      <div><label class="lbl">담당자명</label><input id="adv-contact" placeholder="담당자 이름"></div>
-      <div><label class="lbl">세금계산서 이메일</label><input id="adv-email" placeholder="example@company.com"></div>
+    <div style="margin-bottom:18px">
+      <label class="lbl">광고주명 *</label>
+      <input id="adv-name" placeholder="주식회사 ..." style="width:100%;padding:10px 14px;border:1.5px solid var(--color-border-secondary);border-radius:8px;font-size:15px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none">
+      <input id="adv-biz" type="hidden">
+      <input id="adv-contact" type="hidden">
+      <input id="adv-email" type="hidden">
     </div>
-    <hr>
-    <div class="flex-between" style="margin-bottom:14px">
-      <div style="font-size:14px;font-weight:500">캠페인 · 매체별 수수료</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--color-border-tertiary)">
+      <div style="font-size:14px;font-weight:600">캠페인 · 매체별 수수료</div>
       <button class="btn btn-secondary btn-sm" onclick="addCamp()">+ 캠페인 추가</button>
     </div>
     <div id="camp-list"></div>
@@ -549,91 +549,91 @@ function closeAdvModal() {
 function renderCamps() {
   const NEEDS_ACCOUNT = ['네이버SA','네이버GFA','네이버NOSP','구글','메타','트위터','X(트위터)','크리테오','카카오SA','카카오모먼트','카카오브검','카카오키워드','카카오톡채널'];
   const ACCOUNT_LABEL = {
-    '네이버SA': '비고 계정번호', '네이버GFA': '비고 계정번호', '네이버NOSP': '비고 계정번호',
-    '구글': '계정 ID (예: 196-947-7609)', '메타': 'Account Id / Group',
-    '트위터': 'Account No', 'X(트위터)': 'Account No',
-    '크리테오': 'Account Name (예: Locknlockmall KR)',
-    '카카오SA': '자산 ID', '카카오모먼트': '자산/월렛 ID',
-    '카카오브검': '자산 ID', '카카오키워드': '자산 ID', '카카오톡채널': '월렛 ID',
+    '네이버SA':'비고 계정번호', '네이버GFA':'비고 계정번호', '네이버NOSP':'비고 계정번호',
+    '구글':'계정 ID (예: 196-947-7609)', '메타':'Account Id / Group',
+    '트위터':'Account No', 'X(트위터)':'Account No',
+    '크리테오':'Account Name (예: Locknlockmall KR)',
+    '카카오SA':'자산 ID', '카카오모먼트':'자산/월렛 ID',
+    '카카오브검':'자산 ID', '카카오키워드':'자산 ID', '카카오톡채널':'월렛 ID',
   };
   const FX_MEDIA = ['구글','메타','트위터','X(트위터)','틱톡','애플서치애드','크리테오'];
 
   let html = '';
+  if (campData.length === 0) {
+    html = '<div style="text-align:center;padding:24px;color:var(--color-text-tertiary);font-size:13px">+ 캠페인 추가 버튼을 눌러 캠페인을 만드세요</div>';
+  }
+
   campData.forEach((c, ci) => {
-    html += '<div style="border:1px solid var(--color-border-tertiary);border-radius:10px;padding:16px;margin-bottom:12px;background:var(--color-background-primary)">';
-    
-    // 캠페인명 행
-    html += '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);min-width:60px">캠페인명</div>';
-    html += '<input style="flex:1;padding:8px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none" placeholder="예: 사방넷" value="' + (c.name||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].name=this.value">';
-    html += '<button class="btn btn-danger btn-sm" onclick="delCamp(' + ci + ')" style="white-space:nowrap">캠페인 삭제</button>';
+    html += '<div style="border:1.5px solid var(--color-border-secondary);border-radius:12px;overflow:hidden;margin-bottom:14px">';
+
+    // 캠페인 헤더
+    html += '<div style="background:var(--color-background-secondary);padding:12px 16px;display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--color-text-tertiary);min-width:52px">캠페인명</span>';
+    html += '<input style="flex:1;padding:7px 12px;border:1.5px solid var(--color-border-secondary);border-radius:7px;font-size:14px;font-weight:500;background:var(--color-background-primary);color:var(--color-text-primary);outline:none" placeholder="예: 사방넷" value="' + (c.name||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].name=this.value">';
+    html += '<button onclick="delCamp(' + ci + ')" style="padding:5px 12px;border:1px solid #f09595;border-radius:6px;background:#fce8e8;color:#a32d2d;font-size:12px;cursor:pointer;white-space:nowrap">삭제</button>';
     html += '</div>';
 
-    // 헤더
-    html += '<div style="display:grid;grid-template-columns:160px 80px 80px 80px 1fr 28px;gap:6px;margin-bottom:6px;padding:0 4px">';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary)">매체</div>';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-align:center">마크업%</div>';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-align:center">매체수수료%</div>';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-align:center">페이백%</div>';
-    html += '<div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary)">계정번호</div>';
-    html += '<div></div>';
-    html += '</div>';
+    // 매체 목록
+    html += '<div style="padding:12px 16px">';
 
-    // 매체 행들
-    (c.mediaRates || []).forEach((mr, mi) => {
+    if ((c.mediaRates||[]).length === 0) {
+      html += '<div style="text-align:center;padding:16px;color:var(--color-text-tertiary);font-size:12px">+ 매체 추가 버튼으로 매체를 추가하세요</div>';
+    }
+
+    (c.mediaRates||[]).forEach((mr, mi) => {
       const needsAcct = NEEDS_ACCOUNT.includes(mr.media);
       const acctLabel = ACCOUNT_LABEL[mr.media] || '계정번호';
       const needsFx = FX_MEDIA.includes(mr.media);
       const accts = mr.naverAccounts || [];
 
-      html += '<div style="margin-bottom:6px;border:1px solid var(--color-border-tertiary);border-radius:8px;overflow:hidden">';
-      
-      // 메인 행
-      html += '<div style="display:grid;grid-template-columns:160px 80px 80px 80px 1fr 28px;gap:6px;padding:8px;background:var(--color-background-secondary);align-items:center">';
-      
+      html += '<div style="border:1px solid var(--color-border-tertiary);border-radius:9px;margin-bottom:8px;overflow:hidden">';
+
+      // 매체 행
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--color-background-primary)">';
+
       // 매체 선택
-      html += '<select style="padding:6px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)" onchange="campData[' + ci + '].mediaRates[' + mi + '].media=this.value;renderCamps()">';
+      html += '<select style="width:140px;padding:7px 10px;border:1.5px solid var(--color-border-secondary);border-radius:7px;font-size:13px;font-weight:500;background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer" onchange="campData[' + ci + '].mediaRates[' + mi + '].media=this.value;renderCamps()">';
       MEDIA_LIST.forEach(m => { html += '<option' + (m === mr.media ? ' selected' : '') + '>' + m + '</option>'; });
       html += '</select>';
-      
-      // 수수료 3개
-      ['markupRate','agencyFeeRate','paybackRate'].forEach(key => {
+
+      // 수수료 3개 - 라벨+입력 묶음
+      [['마크업','markupRate'],['매체수수료','agencyFeeRate'],['페이백','paybackRate']].forEach(([lbl,key]) => {
         const val = Math.round((mr[key]||0)*100);
-        html += '<div style="position:relative"><input type="number" min="0" max="100" step="0.5" value="' + val + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].' + key + '=parseFloat(this.value||0)/100" style="width:100%;padding:6px 18px 6px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:13px;text-align:right;background:var(--color-background-primary);color:var(--color-text-primary)"><span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--color-text-tertiary)">%</span></div>';
+        html += '<div style="display:flex;align-items:center;gap:4px">';
+        html += '<span style="font-size:11px;color:var(--color-text-tertiary);white-space:nowrap">' + lbl + '</span>';
+        html += '<div style="position:relative;width:58px"><input type="number" min="0" max="100" step="0.5" value="' + val + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].' + key + '=parseFloat(this.value||0)/100" style="width:100%;padding:6px 18px 6px 8px;border:1.5px solid var(--color-border-secondary);border-radius:7px;font-size:13px;text-align:right;background:var(--color-background-primary);color:var(--color-text-primary);outline:none"><span style="position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--color-text-tertiary);pointer-events:none">%</span></div>';
+        html += '</div>';
       });
 
-      // 계정번호 요약 + 추가 버튼
-      html += '<div style="display:flex;align-items:center;gap:6px">';
-      if (needsAcct) {
-        if (accts.length > 0) {
-          html += '<span style="font-size:11px;color:var(--color-text-secondary);flex:1">' + accts.map(a => a.accountNo || '').filter(Boolean).join(', ') + '</span>';
-        } else {
-          html += '<span style="font-size:11px;color:var(--color-text-tertiary);flex:1">계정 미등록</span>';
-        }
-        html += '<button onclick="addNaverAcct(' + ci + ',' + mi + ')" style="font-size:11px;padding:3px 8px;border:1px solid var(--color-border-secondary);border-radius:5px;background:var(--color-background-primary);cursor:pointer;color:var(--color-text-secondary);white-space:nowrap">+ 추가</button>';
-      } else {
-        html += '<span style="font-size:11px;color:var(--color-text-tertiary)">-</span>';
-      }
-      if (needsFx) {
-        const fxOn = mr.hasFx;
-        var fxChk = fxOn ? 'checked' : '';
-        html += '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:11px;color:var(--color-text-secondary);white-space:nowrap"><input type="checkbox" ' + fxChk + ' onchange="toggleFx(' + ci + ',' + mi + ',this.checked)"> 환율</label>';
-      }
-      html += '</div>';
-      
-      // 삭제
-      html += '<button onclick="delMedia(' + ci + ',' + mi + ')" style="width:24px;height:28px;border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:16px">×</button>';
-      html += '</div>'; // 메인 행 끝
+      html += '<div style="flex:1"></div>';
 
-      // 계정번호 입력 영역 (inline)
+      // 환율 체크박스
+      if (needsFx) {
+        var fxChk = mr.hasFx ? 'checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:var(--color-text-secondary);white-space:nowrap;padding:4px 8px;border:1px solid var(--color-border-secondary);border-radius:6px"><input type="checkbox" ' + fxChk + ' onchange="toggleFx(' + ci + ',' + mi + ',this.checked)"> 환율</label>';
+      }
+
+      // 계정 추가 버튼
+      if (needsAcct) {
+        const acctCount = accts.length;
+        html += '<button onclick="addNaverAcct(' + ci + ',' + mi + ')" style="padding:5px 10px;border:1px solid var(--color-border-secondary);border-radius:6px;background:var(--color-background-secondary);font-size:11px;color:var(--color-text-secondary);cursor:pointer;white-space:nowrap">';
+        html += acctCount > 0 ? '계정 ' + acctCount + '개 ＋' : '+ 계정';
+        html += '</button>';
+      }
+
+      // 삭제
+      html += '<button onclick="delMedia(' + ci + ',' + mi + ')" style="width:28px;height:28px;border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:18px;line-height:1">×</button>';
+      html += '</div>';
+
+      // 계정번호 입력 영역
       if (needsAcct && accts.length > 0) {
-        html += '<div style="padding:8px 10px;background:var(--color-background-primary);border-top:1px solid var(--color-border-tertiary)">';
-        html += '<div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:6px">' + acctLabel + '</div>';
+        html += '<div style="padding:10px 12px;background:#f8f7f4;border-top:1px solid var(--color-border-tertiary)">';
+        html += '<div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px;font-weight:500">' + acctLabel + '</div>';
         accts.forEach((a, ai) => {
           html += '<div style="display:grid;grid-template-columns:1fr 1.5fr 24px;gap:6px;margin-bottom:6px;align-items:center">';
-          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="padding:6px 10px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">';
-          html += '<input placeholder="계정명 (선택)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="padding:6px 10px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">';
-          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:24px;height:28px;border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:16px">×</button>';
+          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="padding:7px 10px;border:1.5px solid var(--color-border-secondary);border-radius:7px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none">';
+          html += '<input placeholder="계정명 (선택)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="padding:7px 10px;border:1.5px solid var(--color-border-secondary);border-radius:7px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none">';
+          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:24px;height:24px;border:none;background:transparent;cursor:pointer;color:var(--color-text-tertiary);font-size:16px">×</button>';
           html += '</div>';
         });
         html += '</div>';
@@ -641,28 +641,30 @@ function renderCamps() {
 
       // 환율 입력 영역
       if (needsFx && mr.hasFx) {
-        html += '<div style="padding:8px 10px;background:#fdf8f0;border-top:1px solid #e8d5a3;display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center">';
-        html += '<div style="font-size:11px;color:#92600a;font-weight:500">💱 환율</div>';
-        html += '<div style="display:flex;gap:8px;align-items:center">';
-        html += '<select style="padding:5px 8px;border:1px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff" onchange="campData[' + ci + '].mediaRates[' + mi + '].fxCurrency=this.value">';
+        html += '<div style="padding:10px 12px;background:#fdf8f0;border-top:1px solid #e8d5a3;display:flex;align-items:center;gap:10px">';
+        html += '<span style="font-size:11px;color:#92600a;font-weight:600;white-space:nowrap">💱 환율</span>';
+        html += '<select style="padding:6px 8px;border:1px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff;color:#633806" onchange="campData[' + ci + '].mediaRates[' + mi + '].fxCurrency=this.value">';
         ['USD','EUR','GBP','JPY','CNY','SGD','AUD','CAD'].forEach(cur => {
           html += '<option' + (mr.fxCurrency === cur ? ' selected' : '') + '>' + cur + '</option>';
         });
         html += '</select>';
-        html += '<input type="number" min="0" step="0.01" placeholder="환율 (원)" value="' + (mr.fxRate||'') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].fxRate=parseFloat(this.value||0)" style="flex:1;padding:5px 10px;border:1px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff">';
-        html += '</div></div>';
+        html += '<input type="number" min="0" step="0.01" placeholder="환율 (원, 예: 1380)" value="' + (mr.fxRate||'') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].fxRate=parseFloat(this.value||0)" style="flex:1;padding:6px 10px;border:1px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff">';
+        html += '</div>';
       }
 
-      html += '</div>'; // 매체 행 박스 끝
+      html += '</div>'; // 매체 박스 끝
     });
 
     // 매체 추가 버튼
-    html += '<div style="display:flex;gap:8px;margin-top:8px">';
-    html += '<button class="btn btn-secondary btn-sm" onclick="addMedia(' + ci + ')">+ 매체 추가</button>';
-    html += '<button class="btn btn-ghost btn-sm" style="color:#9b59b6" onclick="addWbMedia(' + ci + ')">+ 와이즈버즈 매체</button>';
+    html += '<div style="display:flex;gap:8px;padding-top:8px">';
+    html += '<button onclick="addMedia(' + ci + ')" style="padding:7px 14px;border:1.5px dashed var(--color-border-secondary);border-radius:8px;background:transparent;font-size:13px;color:var(--color-text-secondary);cursor:pointer">+ 매체 추가</button>';
+    html += '<button onclick="addWbMedia(' + ci + ')" style="padding:7px 14px;border:1.5px dashed #c9b3f5;border-radius:8px;background:transparent;font-size:13px;color:#9b59b6;cursor:pointer">+ 와이즈버즈</button>';
     html += '</div>';
-    html += '</div>';
+
+    html += '</div>'; // padding 끝
+    html += '</div>'; // 캠페인 박스 끝
   });
+
   $('camp-list').innerHTML = html;
 }
 
