@@ -219,11 +219,14 @@ DEFAULT_TEAMS = [
 def init_teams():
     try:
         conn = get_db()
+        existing = db_fetchall(conn, 'SELECT name FROM teams', ())
+        existing_names = {r['name'] for r in existing}
         for i, name in enumerate(DEFAULT_TEAMS):
-            try:
-                db_execute(conn, 'INSERT INTO teams (name, sort_order) VALUES (?,?) ON CONFLICT (name) DO NOTHING', (name, i))
-            except:
-                pass
+            if name not in existing_names:
+                try:
+                    db_execute(conn, 'INSERT INTO teams (name, sort_order) VALUES (?,?)', (name, i))
+                except:
+                    pass
         db_commit(conn)
         if PG: conn.close()
     except Exception as e:
