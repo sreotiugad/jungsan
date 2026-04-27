@@ -422,6 +422,13 @@ async function doAuth() {
   $('auth-page').classList.add('hidden');
   $('main-app').classList.remove('hidden');
   await loadAll();
+  // 최신 role 다시 확인
+  const meData = await api('/api/me');
+  if (meData && meData.role) {
+    currentUser.role = meData.role;
+    currentUser.name = meData.name;
+    currentUser.team = meData.team;
+  }
   // 관리자/팀장 탭 표시
   if (currentUser.role === 'admin' || currentUser.role === 'manager') {
     $('nav-admin-btn').style.display = 'inline-block';
