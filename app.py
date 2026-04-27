@@ -258,30 +258,30 @@ def register():
     if not d.get('username') or not d.get('password') or not d.get('name'):
         return jsonify({'error': '필수 항목을 입력해주세요'}), 400
     try:
-        with get_db() as conn:
-            conn.execute(
-                'INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
-                (d['username'], hash_pw(d['password']), d['name'], d.get('team', ''))
-            )
+        conn = get_db()
+        db_insert(conn, 'INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
+            (d['username'], hash_pw(d['password']), d['name'], d.get('team', '')))
+        db_commit(conn)
+        if PG: conn.close()
         return jsonify({'success': True})
-    except sqlite3.IntegrityError:
+    except Exception:
         return jsonify({'error': '이미 사용 중인 아이디입니다'}), 400
 
 @app.route('/api/login', methods=['POST'])
 def login():
     d = request.json
-    with get_db() as conn:
-        user = conn.execute(
-            'SELECT * FROM users WHERE username=? AND password_hash=?',
-            (d.get('username', ''), hash_pw(d.get('password', '')))
-        ).fetchone()
+    conn = get_db()
+    user = db_fetchone(conn, 'SELECT * FROM users WHERE username=? AND password_hash=?',
+        (d.get('username', ''), hash_pw(d.get('password', ''))))
+    if PG: conn.close()
     if not user:
         return jsonify({'error': '아이디 또는 비밀번호가 틀렸습니다'}), 401
     session.permanent = True
     session['user_id'] = user['id']
     session['user_name'] = user['name']
-    session['user_team'] = user['team']
-    return jsonify({'success': True, 'name': user['name'], 'team': user['team']})
+    session['user_team'] = user.get('team', '')
+    session['user_role'] = user.get('role', 'member')
+    return jsonify({'success': True, 'name': user['name'], 'team': user.get('team', '')})
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -518,16 +518,16 @@ def admin_get_settlements():
 
 # ───────────── 광고주 API ─────────────────────────────
 def get_adv_full(conn, adv_id):
-    adv = conn.execute('SELECT * FROM advertisers WHERE id=?', (adv_id,)).fetchone()
+    adv = db_fetchone(conn, 'SELECT * FROM advertisers WHERE id=?', (adv_id,))
     if not adv:
         return None
-    camps = conn.execute('SELECT * FROM campaigns WHERE advertiser_id=? ORDER BY sort_order', (adv_id,)).fetchall()
+    camps = db_fetchall(conn, 'SELECT * FROM campaigns WHERE advertiser_id=? ORDER BY sort_order', (adv_id,))
     campaigns = []
     for c in camps:
-        rates = conn.execute('SELECT * FROM media_rates WHERE campaign_id=? ORDER BY sort_order', (c['id'],)).fetchall()
+        rates = db_fetchall(conn, 'SELECT * FROM media_rates WHERE campaign_id=? ORDER BY sort_order', (c['id'],))
         media_rates_list = []
         for r in rates:
-            accts = conn.execute('SELECT * FROM naver_accounts WHERE media_rate_id=?', (r['id'],)).fetchall()
+            accts = db_fetchall(conn, 'SELECT * FROM naver_accounts WHERE media_rate_id=?', (r['id'],))
             media_rates_list.append({
                 'id': r['id'], 'media': r['media'],
                 'markupRate': r['markup_rate'],
@@ -548,75 +548,73 @@ def get_adv_full(conn, adv_id):
 @app.route('/api/advertisers')
 @require_login
 def get_advertisers():
-    with get_db() as conn:
-        advs = conn.execute('SELECT id FROM advertisers WHERE user_id=?', (session['user_id'],)).fetchall()
-        return jsonify([get_adv_full(conn, a['id']) for a in advs])
+    conn = get_db()
+    advs = db_fetchall(conn, 'SELECT id FROM advertisers WHERE user_id=?', (session['user_id'],))
+    result = [get_adv_full(conn, a['id']) for a in advs]
+    if PG: conn.close()
+    return jsonify(result)
 
 @app.route('/api/advertisers', methods=['POST'])
 @require_login
 def create_advertiser():
     d = request.json
-    with get_db() as conn:
-        cur = conn.execute(
-            'INSERT INTO advertisers (user_id, name, biz_no, email, contact_name) VALUES (?,?,?,?,?)',
-            (session['user_id'], d['name'], d.get('bizNo',''), d.get('email',''), d.get('contactName',''))
-        )
-        adv_id = cur.lastrowid
-        for ci, camp in enumerate(d.get('campaigns', [])):
-            cur2 = conn.execute('INSERT INTO campaigns (advertiser_id, name, sort_order) VALUES (?,?,?)', (adv_id, camp['name'], ci))
-            camp_id = cur2.lastrowid
-            for mi, mr in enumerate(camp.get('mediaRates', [])):
-                cur3 = conn.execute(
-                    'INSERT INTO media_rates (campaign_id, media, markup_rate, agency_fee_rate, payback_rate, sort_order) VALUES (?,?,?,?,?,?)',
-                    (camp_id, mr['media'], mr.get('markupRate',0), mr.get('agencyFeeRate',0), mr.get('paybackRate',0), mi)
-                )
-                mr_id = cur3.lastrowid
-                for acct in mr.get('naverAccounts', []):
-                    if acct.get('accountNo','').strip():
-                        conn.execute('INSERT INTO naver_accounts (media_rate_id, account_no, account_name) VALUES (?,?,?)',
-                                     (mr_id, acct['accountNo'].strip(), acct.get('accountName','').strip()))
+    conn = get_db()
+    adv_id = db_insert(conn, 'INSERT INTO advertisers (user_id, name, biz_no, email, contact_name) VALUES (?,?,?,?,?)',
+        (session['user_id'], d['name'], d.get('bizNo',''), d.get('email',''), d.get('contactName','')))
+    for ci, camp in enumerate(d.get('campaigns', [])):
+        camp_id = db_insert(conn, 'INSERT INTO campaigns (advertiser_id, name, sort_order) VALUES (?,?,?)', (adv_id, camp['name'], ci))
+        for mi, mr in enumerate(camp.get('mediaRates', [])):
+            mr_id = db_insert(conn, 'INSERT INTO media_rates (campaign_id, media, markup_rate, agency_fee_rate, payback_rate, sort_order) VALUES (?,?,?,?,?,?)',
+                (camp_id, mr['media'], mr.get('markupRate',0), mr.get('agencyFeeRate',0), mr.get('paybackRate',0), mi))
+            for acct in mr.get('naverAccounts', []):
+                if acct.get('accountNo','').strip():
+                    db_execute(conn, 'INSERT INTO naver_accounts (media_rate_id, account_no, account_name) VALUES (?,?,?)',
+                        (mr_id, acct['accountNo'].strip(), acct.get('accountName','').strip()))
+    db_commit(conn)
+    if PG: conn.close()
     return jsonify({'success': True, 'id': adv_id})
 
 @app.route('/api/advertisers/<int:adv_id>', methods=['PUT'])
 @require_login
 def update_advertiser(adv_id):
     d = request.json
-    with get_db() as conn:
-        conn.execute(
-            'UPDATE advertisers SET name=?, biz_no=?, email=?, contact_name=? WHERE id=? AND user_id=?',
-            (d['name'], d.get('bizNo',''), d.get('email',''), d.get('contactName',''), adv_id, session['user_id'])
-        )
-        camps = conn.execute('SELECT id FROM campaigns WHERE advertiser_id=?', (adv_id,)).fetchall()
-        for c in camps:
-            conn.execute('DELETE FROM media_rates WHERE campaign_id=?', (c['id'],))
-        conn.execute('DELETE FROM campaigns WHERE advertiser_id=?', (adv_id,))
-        for ci, camp in enumerate(d.get('campaigns', [])):
-            cur = conn.execute('INSERT INTO campaigns (advertiser_id, name, sort_order) VALUES (?,?,?)', (adv_id, camp['name'], ci))
-            camp_id = cur.lastrowid
-            for mi, mr in enumerate(camp.get('mediaRates', [])):
-                cur3 = conn.execute(
-                    'INSERT INTO media_rates (campaign_id, media, markup_rate, agency_fee_rate, payback_rate, sort_order) VALUES (?,?,?,?,?,?)',
-                    (camp_id, mr['media'], mr.get('markupRate',0), mr.get('agencyFeeRate',0), mr.get('paybackRate',0), mi)
-                )
-                mr_id = cur3.lastrowid
-                for acct in mr.get('naverAccounts', []):
-                    if acct.get('accountNo','').strip():
-                        conn.execute('INSERT INTO naver_accounts (media_rate_id, account_no, account_name) VALUES (?,?,?)',
-                                     (mr_id, acct['accountNo'].strip(), acct.get('accountName','').strip()))
+    conn = get_db()
+    db_execute(conn, 'UPDATE advertisers SET name=?, biz_no=?, email=?, contact_name=? WHERE id=? AND user_id=?',
+        (d['name'], d.get('bizNo',''), d.get('email',''), d.get('contactName',''), adv_id, session['user_id']))
+    camps = db_fetchall(conn, 'SELECT id FROM campaigns WHERE advertiser_id=?', (adv_id,))
+    for c in camps:
+        mrs = db_fetchall(conn, 'SELECT id FROM media_rates WHERE campaign_id=?', (c['id'],))
+        for mr in mrs:
+            db_execute(conn, 'DELETE FROM naver_accounts WHERE media_rate_id=?', (mr['id'],))
+        db_execute(conn, 'DELETE FROM media_rates WHERE campaign_id=?', (c['id'],))
+    db_execute(conn, 'DELETE FROM campaigns WHERE advertiser_id=?', (adv_id,))
+    for ci, camp in enumerate(d.get('campaigns', [])):
+        camp_id = db_insert(conn, 'INSERT INTO campaigns (advertiser_id, name, sort_order) VALUES (?,?,?)', (adv_id, camp['name'], ci))
+        for mi, mr in enumerate(camp.get('mediaRates', [])):
+            mr_id = db_insert(conn, 'INSERT INTO media_rates (campaign_id, media, markup_rate, agency_fee_rate, payback_rate, sort_order) VALUES (?,?,?,?,?,?)',
+                (camp_id, mr['media'], mr.get('markupRate',0), mr.get('agencyFeeRate',0), mr.get('paybackRate',0), mi))
+            for acct in mr.get('naverAccounts', []):
+                if acct.get('accountNo','').strip():
+                    db_execute(conn, 'INSERT INTO naver_accounts (media_rate_id, account_no, account_name) VALUES (?,?,?)',
+                        (mr_id, acct['accountNo'].strip(), acct.get('accountName','').strip()))
+    db_commit(conn)
+    if PG: conn.close()
     return jsonify({'success': True})
 
 @app.route('/api/advertisers/<int:adv_id>', methods=['DELETE'])
 @require_login
 def delete_advertiser(adv_id):
-    with get_db() as conn:
-        camps = conn.execute('SELECT id FROM campaigns WHERE advertiser_id=?', (adv_id,)).fetchall()
-        for c in camps:
-            mrs = conn.execute('SELECT id FROM media_rates WHERE campaign_id=?', (c['id'],)).fetchall()
-            for mr in mrs:
-                conn.execute('DELETE FROM naver_accounts WHERE media_rate_id=?', (mr['id'],))
-            conn.execute('DELETE FROM media_rates WHERE campaign_id=?', (c['id'],))
-        conn.execute('DELETE FROM campaigns WHERE advertiser_id=?', (adv_id,))
-        conn.execute('DELETE FROM advertisers WHERE id=? AND user_id=?', (adv_id, session['user_id']))
+    conn = get_db()
+    camps = db_fetchall(conn, 'SELECT id FROM campaigns WHERE advertiser_id=?', (adv_id,))
+    for c in camps:
+        mrs = db_fetchall(conn, 'SELECT id FROM media_rates WHERE campaign_id=?', (c['id'],))
+        for mr in mrs:
+            db_execute(conn, 'DELETE FROM naver_accounts WHERE media_rate_id=?', (mr['id'],))
+        db_execute(conn, 'DELETE FROM media_rates WHERE campaign_id=?', (c['id'],))
+    db_execute(conn, 'DELETE FROM campaigns WHERE advertiser_id=?', (adv_id,))
+    db_execute(conn, 'DELETE FROM advertisers WHERE id=? AND user_id=?', (adv_id, session['user_id']))
+    db_commit(conn)
+    if PG: conn.close()
     return jsonify({'success': True})
 
 
@@ -624,36 +622,29 @@ def delete_advertiser(adv_id):
 @app.route('/api/settlements')
 @require_login
 def get_settlements():
-    with get_db() as conn:
-        rows = conn.execute(
-            'SELECT * FROM settlements WHERE user_id=? ORDER BY created_at DESC LIMIT 200',
-            (session['user_id'],)
-        ).fetchall()
-    return jsonify([dict(r) for r in rows])
+    conn = get_db()
+    rows = db_fetchall(conn, 'SELECT * FROM settlements WHERE user_id=? ORDER BY created_at DESC LIMIT 200', (session['user_id'],))
+    if PG: conn.close()
+    return jsonify(rows)
 
 @app.route('/api/settlements', methods=['POST'])
 @require_login
 def save_settlements():
     rows = request.json
     now = datetime.now().isoformat()
-    with get_db() as conn:
-        for r in rows:
-            conn.execute('''
-                INSERT INTO settlements (user_id, advertiser, campaign, media, period,
-                    start_date, end_date, supply_amt, markup_rate, markup,
-                    agency_fee_rate, agency_fee, total, billing_date, prev_diff,
-                    billing_ad_cost, billing_markup, billing_total, diff,
-                    account_id, note, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (
-                session['user_id'], r.get('advertiser'), r.get('campaign'), r.get('media'),
-                r.get('period'), r.get('startDate'), r.get('endDate'),
-                r.get('supplyAmt',0), r.get('markupRate',0), r.get('markup',0),
-                r.get('agencyFeeRate',0), r.get('agencyFee',0), r.get('total',0),
-                r.get('billingDate'), r.get('prevDiff',0), r.get('billingAdCost',0),
-                r.get('billingMarkup',0), r.get('billingTotal',0), r.get('diff',0),
-                r.get('accountId',''), r.get('note',''), r.get('fxCurrency',''), r.get('fxRate'), now
-            ))
+    conn = get_db()
+    for r in rows:
+        db_execute(conn, 
+            'INSERT INTO settlements (user_id, advertiser, campaign, media, period, start_date, end_date, supply_amt, markup_rate, markup, agency_fee_rate, agency_fee, total, billing_date, prev_diff, billing_ad_cost, billing_markup, billing_total, diff, account_id, note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (session['user_id'], r.get('advertiser'), r.get('campaign'), r.get('media'),
+             r.get('period'), r.get('startDate'), r.get('endDate'),
+             r.get('supplyAmt',0), r.get('markupRate',0), r.get('markup',0),
+             r.get('agencyFeeRate',0), r.get('agencyFee',0), r.get('total',0),
+             r.get('billingDate'), r.get('prevDiff',0), r.get('billingAdCost',0),
+             r.get('billingMarkup',0), r.get('billingTotal',0), r.get('diff',0),
+             r.get('accountId',''), r.get('note',''), now))
+    db_commit(conn)
+    if PG: conn.close()
     return jsonify({'success': True})
 
 
