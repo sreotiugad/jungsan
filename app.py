@@ -1,1943 +1,1672 @@
-"""
-광고 정산 자동화 시스템 - Flask 백엔드
-실행: python app.py
-접속: http://localhost:5000
-"""
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 광고 정산 자동화 시스템</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #f5f4f0; color: #1a1a18; font-size: 14px; line-height: 1.6; }
 
-from flask import Flask, request, jsonify, session, send_file, redirect, url_for
-from authlib.integrations.flask_client import OAuth
-import hashlib, os, io
-from datetime import datetime
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+  /* ── 레이아웃 ── */
+  #app { min-height: 100vh; }
+  .nav { background: #fff; border-bottom: 1px solid #e5e3dc; display: flex; align-items: center; padding: 0 24px; height: 52px; gap: 8px; position: sticky; top: 0; z-index: 50; }
+  .nav-brand { font-size: 15px; font-weight: 600; margin-right: 8px; }
+  .nav-tabs { display: flex; gap: 4px; flex: 1; }
+  .nav-tab { padding: 7px 14px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 14px; color: #73726c; transition: all .15s; }
+  .nav-tab.active { background: #f0efe9; color: #1a1a18; font-weight: 500; }
+  .nav-user { font-size: 13px; color: #73726c; }
+  .nav-btn { padding: 6px 14px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 13px; color: #73726c; }
+  .nav-btn:hover { background: #f0efe9; }
 
-app = Flask(__name__, static_folder='static', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'xK9mP2vL8nQ4rT6wY1aJ3bF5hD7cE0sU')
+  .content { max-width: 1060px; margin: 0 auto; padding: 28px 20px; }
+  .page { display: none; }
+  .page.active { display: block; }
 
-# Railway 리버스 프록시 설정
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+  /* ── 카드 ── */
+  .card { background: #fff; border: 1px solid #e5e3dc; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
 
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400 * 30
+  /* ── 그리드 ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 
-SUPERADMIN_EMAIL = 'taeyang.park@adef.co.kr'
+  /* ── 폼 ── */
+  label.lbl { font-size: 12px; color: #73726c; margin-bottom: 5px; display: block; font-weight: 500; }
+  input, select, textarea {
+    width: 100%; padding: 9px 12px; border: 1px solid #d3d1c7; border-radius: 8px;
+    background: #fff; color: #1a1a18; font-size: 14px; outline: none; font-family: inherit;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: #888780; }
+  input:disabled, select:disabled { background: #f5f4f0; color: #888780; cursor: not-allowed; }
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
-# Google OAuth 설정
-app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID', '')
-app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET', '')
-app.config['GOOGLE_METADATA_URL'] = 'https://accounts.google.com/.well-known/openid-configuration'
+  /* ── 버튼 ── */
+  .btn { padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; font-family: inherit; transition: opacity .15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #1a1a18; color: #fff; }
+  .btn-secondary { background: #f0efe9; color: #1a1a18; border: 1px solid #d3d1c7; }
+  .btn-danger { background: #fce8e8; color: #a32d2d; border: 1px solid #f09595; }
+  .btn-ghost { background: transparent; color: #73726c; border: none; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
 
-oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=app.config['GOOGLE_CLIENT_ID'],
-    client_secret=app.config['GOOGLE_CLIENT_SECRET'],
-    server_metadata_url=app.config['GOOGLE_METADATA_URL'],
-    client_kwargs={'scope': 'openid email profile'},
-)
+  /* ── 테이블 ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 8px 10px; text-align: left; color: #73726c; font-weight: 500; border-bottom: 1px solid #e5e3dc; background: #faf9f7; }
+  td { padding: 9px 10px; border-bottom: 1px solid #f0efe9; }
+  tr:last-child td { border-bottom: none; }
+  .text-right { text-align: right; }
+  .total-row td { font-weight: 600; background: #faf9f7; border-top: 2px solid #d3d1c7; }
 
-# PostgreSQL 또는 SQLite 선택
-if DATABASE_URL:
-    import psycopg2
-    import psycopg2.extras
-    def get_db():
-        # Railway는 postgres:// 로 주는데 psycopg2는 postgresql:// 필요
-        url = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-        conn = psycopg2.connect(url)
-        return conn
-    PG = True
-else:
-    import sqlite3
-    DB_PATH = 'settlement.db'
-    def get_db():
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return conn
-    PG = False
+  /* ── 배지 ── */
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: #f0efe9; border: 1px solid #e5e3dc; color: #5f5e5a; margin: 2px; }
 
-def init_db():
-    if PG:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id BIGSERIAL PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                name TEXT NOT NULL,
-                team TEXT DEFAULT '',
-                role TEXT DEFAULT 'member'
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS advertisers (
-                id BIGSERIAL PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                name TEXT NOT NULL,
-                biz_no TEXT DEFAULT '',
-                email TEXT DEFAULT '',
-                contact_name TEXT DEFAULT ''
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS campaigns (
-                id BIGSERIAL PRIMARY KEY,
-                advertiser_id BIGINT NOT NULL,
-                name TEXT NOT NULL,
-                sort_order INTEGER DEFAULT 0
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS media_rates (
-                id BIGSERIAL PRIMARY KEY,
-                campaign_id BIGINT NOT NULL,
-                media TEXT NOT NULL,
-                markup_rate REAL DEFAULT 0,
-                agency_fee_rate REAL DEFAULT 0,
-                payback_rate REAL DEFAULT 0,
-                sort_order INTEGER DEFAULT 0
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS naver_accounts (
-                id BIGSERIAL PRIMARY KEY,
-                media_rate_id BIGINT NOT NULL,
-                account_no TEXT NOT NULL,
-                account_name TEXT DEFAULT ''
-            )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS settlements (
-                id BIGSERIAL PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                advertiser TEXT, campaign TEXT, media TEXT,
-                period TEXT, start_date TEXT, end_date TEXT,
-                supply_amt REAL DEFAULT 0,
-                markup_rate REAL DEFAULT 0, markup REAL DEFAULT 0,
-                agency_fee_rate REAL DEFAULT 0, agency_fee REAL DEFAULT 0,
-                total REAL DEFAULT 0, billing_date TEXT,
-                prev_diff REAL DEFAULT 0, billing_ad_cost REAL DEFAULT 0,
-                billing_markup REAL DEFAULT 0, billing_total REAL DEFAULT 0,
-                diff REAL DEFAULT 0, account_id TEXT DEFAULT '',
-                note TEXT DEFAULT '', fx_currency TEXT DEFAULT '',
-                fx_rate REAL, created_at TEXT
-            )
-        """)
-        conn.commit()
-        cur.close()
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    team TEXT DEFAULT '',
-                    role TEXT DEFAULT 'member'
-                );
-                CREATE TABLE IF NOT EXISTS advertisers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    biz_no TEXT DEFAULT '',
-                    email TEXT DEFAULT '',
-                    contact_name TEXT DEFAULT ''
-                );
-                CREATE TABLE IF NOT EXISTS campaigns (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    advertiser_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    sort_order INTEGER DEFAULT 0
-                );
-                CREATE TABLE IF NOT EXISTS media_rates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    campaign_id INTEGER NOT NULL,
-                    media TEXT NOT NULL,
-                    markup_rate REAL DEFAULT 0,
-                    agency_fee_rate REAL DEFAULT 0,
-                    payback_rate REAL DEFAULT 0,
-                    sort_order INTEGER DEFAULT 0
-                );
-                CREATE TABLE IF NOT EXISTS naver_accounts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    media_rate_id INTEGER NOT NULL,
-                    account_no TEXT NOT NULL,
-                    account_name TEXT DEFAULT ''
-                );
-                CREATE TABLE IF NOT EXISTS settlements (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    advertiser TEXT, campaign TEXT, media TEXT,
-                    period TEXT, start_date TEXT, end_date TEXT,
-                    supply_amt REAL DEFAULT 0,
-                    markup_rate REAL DEFAULT 0, markup REAL DEFAULT 0,
-                    agency_fee_rate REAL DEFAULT 0, agency_fee REAL DEFAULT 0,
-                    total REAL DEFAULT 0, billing_date TEXT,
-                    prev_diff REAL DEFAULT 0, billing_ad_cost REAL DEFAULT 0,
-                    billing_markup REAL DEFAULT 0, billing_total REAL DEFAULT 0,
-                    diff REAL DEFAULT 0, account_id TEXT DEFAULT '',
-                    note TEXT DEFAULT '', fx_currency TEXT DEFAULT '',
-                    fx_rate REAL, created_at TEXT
-                );
-            """)
+  /* ── 알림 ── */
+  .alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .alert-error { background: #fce8e8; color: #a32d2d; border: 1px solid #f09595; }
+  .alert-info { background: #e8f4fb; color: #0c447c; border: 1px solid #85b7eb; }
+  .alert-success { background: #eaf3de; color: #27500a; border: 1px solid #97c459; }
 
-init_db()
+  /* ── 로그인 페이지 ── */
+  .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f5f4f0; }
+  .auth-card { width: 380px; }
+  .auth-title { text-align: center; margin-bottom: 28px; }
+  .auth-title h1 { font-size: 22px; font-weight: 600; }
+  .auth-title p { font-size: 13px; color: #73726c; margin-top: 4px; }
+  .tab-bar { display: flex; border-bottom: 1px solid #e5e3dc; margin-bottom: 20px; }
+  .tab-bar button { flex: 1; padding: 8px 0; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #73726c; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; transition: all .15s; }
+  .tab-bar button.active { color: #1a1a18; font-weight: 500; border-bottom-color: #1a1a18; }
+  .form-group { margin-bottom: 14px; }
 
+  /* ── 모달 ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; z-index: 100; overflow-y: auto; padding: 32px 16px; }
+  .modal { background: #f5f4f0; border-radius: 14px; width: 100%; max-width: 720px; padding: 28px; margin-bottom: 32px; }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
 
-# ───────────── DB 헬퍼 ──────────────────────────────
-def db_execute(conn, sql, params=()):
-    """SQLite/PostgreSQL 통합 실행. ? → %s 자동 변환"""
-    if PG:
-        sql = sql.replace('?', '%s')
-        cur = conn.cursor()
-        cur.execute(sql, params)
-        return cur
-    else:
-        return conn.execute(sql, params)
+  /* ── 캠페인 박스 ── */
+  .camp-box { border: 1px solid #e5e3dc; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .media-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 36px; gap: 8px; align-items: end; margin-bottom: 8px; }
 
-def db_fetchall(conn, sql, params=()):
-    cur = db_execute(conn, sql, params)
-    rows = cur.fetchall()
-    if PG:
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
-    else:
-        return [dict(r) for r in rows]
+  /* ── 정산 입력 박스 ── */
+  .stl-media-box { border: 1px solid #e5e3dc; border-radius: 10px; padding: 16px; margin-bottom: 12px; transition: border-color .2s, background .2s; }
+  .stl-media-box.filled { border-color: #5DCAA5; background: #f0faf6; }
+  .stl-input-grid { display: grid; grid-template-columns: 2fr 1.2fr 1.2fr 1.5fr; gap: 10px; margin-top: 10px; }
 
-def db_fetchone(conn, sql, params=()):
-    cur = db_execute(conn, sql, params)
-    row = cur.fetchone()
-    if row is None: return None
-    if PG:
-        cols = [d[0] for d in cur.description]
-        return dict(zip(cols, row))
-    else:
-        return dict(row)
+  /* ── 스텝 인디케이터 ── */
+  .steps { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; }
+  .step-item { display: flex; align-items: center; gap: 6px; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: #e5e3dc; color: #888; }
+  .step-num.active { background: #1a1a18; color: #fff; }
+  .step-num.done { background: #1D9E75; color: #fff; }
+  .step-label { font-size: 13px; color: #888; }
+  .step-label.active { color: #1a1a18; font-weight: 500; }
+  .step-divider { flex: 0 0 24px; height: 1px; background: #e5e3dc; }
 
-def db_insert(conn, sql, params=()):
-    """INSERT 후 lastrowid 반환"""
-    if PG:
-        sql = sql.replace('?', '%s')
-        if 'RETURNING id' not in sql:
-            sql += ' RETURNING id'
-        cur = conn.cursor()
-        cur.execute(sql, params)
-        return cur.fetchone()[0]
-    else:
-        cur = conn.execute(sql, params)
-        return cur.lastrowid
+  /* ── 통계 카드 ── */
+  .stat-val { font-size: 22px; font-weight: 600; margin-top: 6px; }
+  .stat-lbl { font-size: 12px; color: #73726c; }
 
-def db_commit(conn):
-    if PG: conn.commit()
+  /* ── 기타 ── */
+  .row-btns { display: flex; gap: 10px; justify-content: space-between; margin-top: 18px; }
+  .right-btns { display: flex; gap: 10px; }
+  .tag-green { color: #1D9E75; font-size: 12px; font-weight: 500; }
+  .tag-red { color: #a32d2d; font-size: 12px; }
+  .empty-state { text-align: center; padding: 52px; color: #888; }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+  .hidden { display: none !important; }
+  hr { border: none; border-top: 1px solid #e5e3dc; margin: 18px 0; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .page-sub { font-size: 13px; color: #73726c; margin-bottom: 22px; }
+  .success-box { text-align: center; padding: 52px; }
+  .success-icon { font-size: 48px; margin-bottom: 16px; }
 
-# ───────────── 유틸 ───────────────────────────────────
-def hash_pw(pw):
-    return hashlib.sha256(pw.encode('utf-8')).hexdigest()
+  @media (max-width: 600px) {
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+    .media-row { grid-template-columns: 1fr 1fr; }
+    .stl-input-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
 
-def require_login(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({'error': '로그인이 필요합니다'}), 401
-        return f(*args, **kwargs)
-    return decorated
+<!-- ── 로그인 화면 ── -->
+<div id="auth-page">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-title">
+        <h1>📊 정산 자동화 시스템</h1>
+        <p>광고 대행사 정산 관리</p>
+      </div>
+      <div class="card">
+        <div style="text-align:center;margin-bottom:20px;color:var(--color-text-secondary);font-size:13px">
+          회사 Google 계정으로 로그인하세요
+        </div>
+        <a href="/auth/google" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 20px;border:1px solid var(--color-border-secondary);border-radius:10px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:15px;font-weight:500;text-decoration:none;cursor:pointer;transition:all .15s;box-shadow:0 1px 3px rgba(0,0,0,0.08)" onmouseover="this.style.background='var(--color-background-secondary)'" onmouseout="this.style.background='var(--color-background-primary)'">
+          <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Google 계정으로 로그인
+        </a>
+        <div style="margin-top:16px;padding:12px;background:var(--color-background-secondary);border-radius:8px;font-size:12px;color:var(--color-text-secondary);text-align:center;line-height:1.6">
+          처음 로그인하면 자동으로 계정이 생성됩니다<br>
+          관리자에게 권한 부여를 요청하세요
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
+<!-- ── 메인 앱 ── -->
+<div id="main-app" class="hidden">
+  <div class="nav">
+    <div class="nav-brand">📊 정산 자동화</div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="goto('dash')">대시보드</button>
+      <button class="nav-tab" onclick="goto('adv')">광고주 관리</button>
+      <button class="nav-tab" onclick="goto('stl')">정산 처리</button>
+      <button class="nav-tab" id="nav-admin-btn" onclick="goto('admin')" style="display:none">👑 관리자</button>
+    </div>
+    <span class="nav-user" id="nav-user-name"></span>
+    <button class="nav-btn" onclick="openProfile()">👤 내 프로필</button>
+    <button class="nav-btn" onclick="doLogout()">로그아웃</button>
+  </div>
 
-# ───────────── 인증 API ───────────────────────────────
-@app.route('/api/register', methods=['POST'])
-def register():
-    d = request.json
-    if not d.get('username') or not d.get('password') or not d.get('name'):
-        return jsonify({'error': '필수 항목을 입력해주세요'}), 400
-    try:
-        conn = get_db()
-        db_insert(conn, 'INSERT INTO users (username, password_hash, name, team) VALUES (?,?,?,?)',
-            (d['username'], hash_pw(d['password']), d['name'], d.get('team', '')))
-        db_commit(conn)
-        if PG: conn.close()
-        return jsonify({'success': True})
-    except Exception:
-        return jsonify({'error': '이미 사용 중인 아이디입니다'}), 400
+  <div class="content">
+    <!-- 대시보드 -->
+    <div id="page-dash" class="page active">
+      <div class="page-title" id="dash-greeting">안녕하세요 👋</div>
+      <div class="page-sub">이번 달 정산 현황입니다</div>
+      <div class="grid3" style="margin-bottom:18px">
+        <div class="card"><div class="stat-lbl">관리 광고주</div><div class="stat-val" id="stat-advs">0개</div></div>
+        <div class="card"><div class="stat-lbl">이번달 정산 건수</div><div class="stat-val" id="stat-count">0건</div></div>
+        <div class="card"><div class="stat-lbl">이번달 청구 합계</div><div class="stat-val" id="stat-total">₩0</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">빠른 시작</div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-primary" onclick="goto('stl')">+ 정산 처리 시작</button>
+          <button class="btn btn-secondary" onclick="goto('adv')">광고주 관리</button>
+        </div>
+        <div id="dash-hint" class="alert alert-info hidden" style="margin-top:14px">💡 먼저 광고주와 수수료율을 등록해주세요</div>
+      </div>
+      <div class="card" id="recent-card">
+        <div class="card-title">최근 정산 내역</div>
+        <table>
+          <thead><tr>
+            <th>광고주</th><th>캠페인</th><th>매체</th>
+            <th class="text-right">공급가액</th><th class="text-right">청구금액</th>
+          </tr></thead>
+          <tbody id="recent-body"></tbody>
+        </table>
+      </div>
+    </div>
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    d = request.json
-    conn = get_db()
-    user = db_fetchone(conn, 'SELECT * FROM users WHERE username=? AND password_hash=?',
-        (d.get('username', ''), hash_pw(d.get('password', ''))))
-    if PG: conn.close()
-    if not user:
-        return jsonify({'error': '아이디 또는 비밀번호가 틀렸습니다'}), 401
-    session.permanent = True
-    session['user_id'] = user['id']
-    session['user_name'] = user['name']
-    session['user_team'] = user.get('team', '')
-    session['user_role'] = user.get('role', 'member')
-    return jsonify({'success': True, 'name': user['name'], 'team': user.get('team', '')})
+    <!-- 광고주 관리 -->
+    <div id="page-adv" class="page">
+      <div class="flex-between">
+        <div class="page-title">광고주 관리</div>
+        <button class="btn btn-primary" onclick="openAdvModal(null)">+ 광고주 추가</button>
+      </div>
+      <div id="adv-list"></div>
+    </div>
 
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return jsonify({'success': True})
+    <!-- 관리자 페이지 -->
+    <div id="page-admin" class="page">
+      <div class="page-title">👑 관리자 페이지</div>
+      <div class="page-sub">사용자 권한 관리 및 전체 정산 내역 조회</div>
 
-@app.route('/api/me')
-def me():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
-    # DB에서 최신 role 직접 읽기
-    try:
-        if PG:
-            conn = get_db()
-            user = db_fetchone(conn, 'SELECT role FROM users WHERE id=?', (session['user_id'],))
-            conn.close()
-            role = user['role'] if user else 'member'
-        else:
-            import sqlite3 as _sq
-            with _sq.connect('settlement.db') as conn:
-                conn.row_factory = _sq.Row
-                u = conn.execute('SELECT role FROM users WHERE id=?', (session['user_id'],)).fetchone()
-                role = dict(u)['role'] if u else 'member'
-    except:
-        role = session.get('user_role', 'member')
-    return jsonify({
-        'id': session['user_id'],
-        'name': session['user_name'],
-        'team': session.get('user_team', ''),
-        'role': role,
-        'username': session.get('user_email', session.get('user_id', ''))
-    })
+      <!-- 사용자 관리 -->
+      <div class="card">
+        <div class="card-title">사용자 권한 관리</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--color-background-secondary)">
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">이름</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">이메일</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">팀</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--color-text-secondary)">권한</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--color-text-secondary)">변경</th>
+          </tr></thead>
+          <tbody id="admin-user-list"></tbody>
+        </table>
+      </div>
 
+      <!-- 전체 정산 내역 -->
+      <div class="card">
+        <div class="card-title">전체 정산 내역</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--color-background-secondary)">
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">담당자</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">광고주</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">캠페인</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">매체</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--color-text-secondary)">기간</th>
+            <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--color-text-secondary)">공급가액</th>
+            <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--color-text-secondary)">청구합계</th>
+          </tr></thead>
+          <tbody id="admin-stl-list"></tbody>
+        </table>
+      </div>
+    </div>
 
-# ───────────── Google OAuth ──────────────────────────────
-@app.route('/auth/google')
-def google_login():
-    # Railway/프로덕션에서 https 강제
-    redirect_uri = url_for('google_callback', _external=True)
-    redirect_uri = redirect_uri.replace('http://', 'https://')
-    return google.authorize_redirect(redirect_uri)
+    <!-- 정산 처리 -->
+    <div id="page-stl" class="page">
+      <div class="page-title">정산 처리</div>
+      <div class="page-sub">파일 업로드 또는 금액 입력 → 자동 계산 → XLSX 다운로드</div>
 
-@app.route('/auth/google/callback')
-def google_callback():
-    try:
-        token = google.authorize_access_token()
-        user_info = token.get('userinfo')
-        if not user_info:
-            return redirect('/?error=no_userinfo')
+      <div class="steps">
+        <div class="step-item"><div class="step-num active" id="snum1">1</div><div class="step-label active" id="slbl1">기본 정보</div></div>
+        <div class="step-divider"></div>
+        <div class="step-item"><div class="step-num" id="snum2">2</div><div class="step-label" id="slbl2">금액 입력</div></div>
+        <div class="step-divider"></div>
+        <div class="step-item"><div class="step-num" id="snum3">3</div><div class="step-label" id="slbl3">결과 확인</div></div>
+        <div class="step-divider"></div>
+        <div class="step-item"><div class="step-num" id="snum4">4</div><div class="step-label" id="slbl4">완료</div></div>
+      </div>
 
-        email = user_info.get('email', '')
-        name  = user_info.get('name', '') or email.split('@')[0]
-        role  = 'admin' if email == SUPERADMIN_EMAIL else 'member'
+      <div id="stl-step1" class="card">
+        <div class="card-title">정산 기본 정보</div>
+        <div class="grid2">
+          <div><label class="lbl">광고주</label>
+            <select id="stl-adv" onchange="onStlAdvChange()">
+              <option value="">선택하세요</option>
+            </select>
+          </div>
+          <div><label class="lbl">캠페인</label>
+            <select id="stl-camp" disabled>
+              <option value="">선택하세요</option>
+            </select>
+          </div>
+          <div><label class="lbl">정산 기간</label><input id="stl-period" type="month"></div>
+          <div><label class="lbl">세금계산서 발행일</label><input id="stl-billing-date" type="date"></div>
+        </div>
+        <div style="text-align:right;margin-top:16px">
+          <button class="btn btn-primary" onclick="stlNext1()">다음 →</button>
+        </div>
+      </div>
 
-        user_id = None
-        user_role = role
-        user_name = name
-        user_team = ''
+      <div id="stl-step2" class="hidden">
+        <div class="card">
+          <div class="card-title">금액 입력</div>
+          <div id="stl-info-label" style="font-size:13px;color:#73726c;margin-bottom:16px"></div>
+          <div id="stl-media-inputs"></div>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-secondary" onclick="stlBack(1)">← 이전</button>
+          <button class="btn btn-primary" onclick="stlCalc()">계산하기 →</button>
+        </div>
+      </div>
 
-        try:
-            if PG:
-                conn = get_db()
-                user = db_fetchone(conn, 'SELECT * FROM users WHERE username=?', (email,))
-                if not user:
-                    user_id = db_insert(conn, 
-                        'INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
-                        (email, 'GOOGLE_AUTH', name, '', role))
-                    db_commit(conn)
-                    user_role = role
-                else:
-                    user_id = user['id']
-                    user_name = user.get('name') or name
-                    user_team = user.get('team', '')
-                    user_role = user.get('role', role)
-                    if email == SUPERADMIN_EMAIL and user_role != 'admin':
-                        db_execute(conn, 'UPDATE users SET role=? WHERE id=?', ('admin', user_id))
-                        db_commit(conn)
-                        user_role = 'admin'
-                conn.close()
-            else:
-                import sqlite3 as _sq
-                with _sq.connect('settlement.db') as conn:
-                    conn.row_factory = _sq.Row
-                    user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
-                    if not user:
-                        conn.execute(
-                            'INSERT INTO users (username, password_hash, name, team, role) VALUES (?,?,?,?,?)',
-                            (email, 'GOOGLE_AUTH', name, '', role))
-                        conn.commit()
-                        user = conn.execute('SELECT * FROM users WHERE username=?', (email,)).fetchone()
-                    user = dict(user)
-                    user_id   = user['id']
-                    user_name = user.get('name') or name
-                    user_team = user.get('team', '')
-                    user_role = user.get('role', role)
-        except Exception as db_err:
-            # DB 오류 시에도 세션은 설정 (임시 ID)
-            import hashlib
-            user_id = abs(hash(email)) % 1000000
-            app.logger.error(f'DB error in callback: {db_err}')
+      <div id="stl-step3" class="hidden">
+        <div class="card">
+          <div class="card-title">정산 결과</div>
+          <div id="stl-result-label" style="font-size:13px;color:#73726c;margin-bottom:16px"></div>
+          <div style="overflow-x:auto">
+            <table id="stl-result-table">
+              <thead><tr>
+                <th>매체</th>
+                <th class="text-right">공급가액</th>
+                <th class="text-right">마크업율</th>
+                <th class="text-right">마크업금액</th>
+                <th class="text-right">매체수수료율</th>
+                <th class="text-right">매체수수료</th>
+                <th class="text-right">합계</th>
+                <th class="text-right">전월오차</th>
+                <th class="text-right">청구합계</th>
+              </tr></thead>
+              <tbody id="stl-result-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row-btns">
+          <button class="btn btn-secondary" onclick="stlBack(2)">← 이전</button>
+          <div class="right-btns">
+            <label style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #d3d1c7;border-radius:8px;cursor:pointer;background:#faf9f7;font-size:13px">
+              <span>📂 기존 파일에 추가</span>
+              <input type="file" id="template-file-input" accept=".xlsx" style="display:none" onchange="stlFillTemplate(this)">
+            </label>
+            <button class="btn btn-secondary" onclick="stlExport()">📄 새 XLSX 다운로드</button>
+            <button class="btn btn-primary" onclick="stlSave()">저장 완료</button>
+          </div>
+        </div>
+      </div>
 
-        session.permanent = True
-        session['user_id']    = user_id
-        session['user_name']  = user_name
-        session['user_team']  = user_team
-        session['user_role']  = user_role
-        session['user_email'] = email
-        session.modified = True
+      <div id="stl-step4" class="hidden">
+        <div class="card success-box">
+          <div class="success-icon">✅</div>
+          <div style="font-size:20px;font-weight:600;margin-bottom:8px">정산 완료!</div>
+          <div id="stl-done-label" style="font-size:13px;color:#73726c;margin-bottom:24px"></div>
+          <div class="right-btns" style="justify-content:center;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #d3d1c7;border-radius:8px;cursor:pointer;background:#faf9f7;font-size:13px">
+              <span>📂 기존 파일에 추가</span>
+              <input type="file" id="template-file-input2" accept=".xlsx" style="display:none" onchange="stlFillTemplate(this)">
+            </label>
+            <button class="btn btn-primary" onclick="stlExport()">📄 새 XLSX 다운로드</button>
+            <button class="btn btn-secondary" onclick="stlReset()">새 정산 처리</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-        return redirect('/')
+<!-- ── 광고주 모달 ── -->
+<div id="adv-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeAdvModal()">
+  <div class="modal">
+    <div class="modal-title" id="adv-modal-title">광고주 추가</div>
+    <div style="margin-bottom:18px">
+      <label class="lbl">광고주명 *</label>
+      <input id="adv-name" placeholder="주식회사 ..." style="width:100%;padding:10px 14px;border:1.5px solid var(--color-border-secondary);border-radius:8px;font-size:15px;background:var(--color-background-primary);color:var(--color-text-primary);outline:none">
+      <input id="adv-biz" type="hidden">
+      <input id="adv-contact" type="hidden">
+      <input id="adv-email" type="hidden">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--color-border-tertiary)">
+      <div style="font-size:14px;font-weight:600">캠페인 · 매체별 수수료</div>
+      <button class="btn btn-secondary btn-sm" onclick="addCamp()">+ 캠페인 추가</button>
+    </div>
+    <div id="camp-list"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-secondary" onclick="closeAdvModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveAdv()">저장</button>
+    </div>
+  </div>
+</div>
 
-    except Exception as e:
-        app.logger.error(f'Google callback error: {e}')
-        return redirect('/?error=' + str(type(e).__name__))
+<script>
+// ── 상태 ──────────────────────────────────────────────
+const MEDIA_LIST = ['구글','네이버SA','네이버GFA','네이버NOSP','카카오SA','카카오모먼트','카카오브검','카카오키워드','메타','틱톡','크리테오','애플서치애드','모비온','ADN','네이트','기타'];
+let currentUser = null;
+let advertisers = [];
+let settlements = [];
+let editingAdv = null;
+let stlState = { adv: null, camp: null, period: '', billingDate: '', inputs: {}, rows: [] };
+let authTab = 'login';
 
-# ───────────── 프로필 API ──────────────────────────────
-@app.route('/api/profile')
-@require_login
-def get_profile():
-    if PG:
-        conn = get_db()
-        user = db_fetchone(conn, 'SELECT * FROM users WHERE id=?', (session['user_id'],))
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.row_factory = _sq.Row
-            user = dict(conn.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone())
-    return jsonify({
-        'id': user['id'], 'name': user['name'],
-        'team': user.get('team', ''), 'username': user['username'],
-        'role': user.get('role', 'member')
-    })
+// ── 유틸 ──────────────────────────────────────────────
+const fmt = n => n == null ? '' : Math.round(n).toLocaleString('ko-KR');
+const pct = n => Math.round((n || 0) * 100);
+const $ = id => document.getElementById(id);
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...opts });
+  return r.json();
+};
 
-@app.route('/api/profile', methods=['PUT'])
-@require_login
-def update_profile():
-    d = request.json
-    name = d.get('name', '').strip()
-    team = d.get('team', '').strip()
-    if not name:
-        return jsonify({'error': '이름을 입력해주세요'}), 400
-    if PG:
-        conn = get_db()
-        db_execute(conn, 'UPDATE users SET name=?, team=? WHERE id=?', (name, team, session['user_id']))
-        db_commit(conn)
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.execute('UPDATE users SET name=?, team=? WHERE id=?', (name, team, session['user_id']))
-    session['user_name'] = name
-    session['user_team'] = team
-    return jsonify({'success': True})
+// ── 인증 ──────────────────────────────────────────────
+function switchAuthTab(tab) {
+  authTab = tab;
+  $('tab-login').classList.toggle('active', tab === 'login');
+  $('tab-register').classList.toggle('active', tab === 'register');
+  $('register-fields').classList.toggle('hidden', tab === 'login');
+  $('auth-btn-text').textContent = tab === 'login' ? '로그인' : '가입하기';
+  $('auth-error').classList.add('hidden');
+}
 
-# ───────────── 관리자 API ─────────────────────────────
-def require_admin(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if session.get('user_role') not in ('admin',):
-            return jsonify({'error': '관리자 권한이 필요합니다'}), 403
-        return f(*args, **kwargs)
-    return decorated
+async function doAuth() {
+  const id = $('auth-id').value.trim();
+  const pw = $('auth-pw').value;
+  const name = $('auth-name')?.value?.trim();
+  const team = $('auth-team')?.value?.trim();
 
-def require_manager(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if session.get('user_role') not in ('admin', 'manager'):
-            return jsonify({'error': '팀장 이상 권한이 필요합니다'}), 403
-        return f(*args, **kwargs)
-    return decorated
+  if (!id || !pw) { showAuthError('아이디와 비밀번호를 입력해주세요'); return; }
 
-@app.route('/api/admin/users')
-@require_login
-@require_admin
-def admin_get_users():
-    if PG:
-        conn = get_db()
-        users = db_fetchall(conn, 'SELECT id, username, name, team, role FROM users ORDER BY role, name')
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.row_factory = _sq.Row
-            users = [dict(r) for r in conn.execute('SELECT id, username, name, team, role FROM users ORDER BY role, name').fetchall()]
-    return jsonify(users)
+  if (authTab === 'register') {
+    if (!name) { showAuthError('이름을 입력해주세요'); return; }
+    const r = await api('/api/register', { method: 'POST', body: JSON.stringify({ username: id, password: pw, name, team }) });
+    if (r.error) { showAuthError(r.error); return; }
+  }
 
-@app.route('/api/admin/users/<int:uid>/role', methods=['PUT'])
-@require_login
-@require_admin
-def admin_set_role(uid):
-    role = request.json.get('role', 'member')
-    if role not in ('admin', 'manager', 'member'):
-        return jsonify({'error': '잘못된 역할입니다'}), 400
-    if PG:
-        conn = get_db()
-        db_execute(conn, 'UPDATE users SET role=? WHERE id=?', (role, uid))
-        db_commit(conn)
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.execute('UPDATE users SET role=? WHERE id=?', (role, uid))
-    return jsonify({'success': True})
+  const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ username: id, password: pw }) });
+  if (r.error) { showAuthError(r.error); return; }
 
-@app.route('/api/admin/settlements')
-@require_login
-@require_manager
-def admin_get_settlements():
-    """팀장/관리자용 - 전체 정산 내역"""
-    if PG:
-        conn = get_db()
-        rows = db_fetchall(conn, """
-            SELECT s.*, u.name as user_name, u.team as user_team
-            FROM settlements s
-            JOIN users u ON s.user_id = u.id
-            ORDER BY s.created_at DESC LIMIT 500
-        """)
-        conn.close()
-    else:
-        import sqlite3 as _sq
-        with _sq.connect('settlement.db') as conn:
-            conn.row_factory = _sq.Row
-            rows = [dict(r) for r in conn.execute("""
-                SELECT s.*, u.name as user_name, u.team as user_team
-                FROM settlements s
-                JOIN users u ON s.user_id = u.id
-                ORDER BY s.created_at DESC LIMIT 500
-            """).fetchall()]
-    return jsonify(rows)
+  currentUser = r;
+  $('nav-user-name').textContent = `${r.name}${r.team ? ' · ' + r.team : ''}`;
+  $('auth-page').classList.add('hidden');
+  $('main-app').classList.remove('hidden');
+  await loadAll();
+  // 최신 role 다시 확인
+  const meData = await api('/api/me');
+  if (meData && meData.role) {
+    currentUser.role = meData.role;
+    currentUser.name = meData.name;
+    currentUser.team = meData.team;
+  }
+  // 관리자/팀장 탭 표시
+  if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+    $('nav-admin-btn').style.display = 'inline-block';
+  }
+  goto('dash');
+}
 
+function showAuthError(msg) {
+  const el = $('auth-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
 
-# ───────────── 광고주 API ─────────────────────────────
-def get_adv_full(conn, adv_id):
-    adv = db_fetchone(conn, 'SELECT * FROM advertisers WHERE id=?', (adv_id,))
-    if not adv:
-        return None
-    camps = db_fetchall(conn, 'SELECT * FROM campaigns WHERE advertiser_id=? ORDER BY sort_order', (adv_id,))
-    campaigns = []
-    for c in camps:
-        rates = db_fetchall(conn, 'SELECT * FROM media_rates WHERE campaign_id=? ORDER BY sort_order', (c['id'],))
-        media_rates_list = []
-        for r in rates:
-            accts = db_fetchall(conn, 'SELECT * FROM naver_accounts WHERE media_rate_id=?', (r['id'],))
-            media_rates_list.append({
-                'id': r['id'], 'media': r['media'],
-                'markupRate': r['markup_rate'],
-                'agencyFeeRate': r['agency_fee_rate'],
-                'paybackRate': r['payback_rate'],
-                'naverAccounts': [{'id': a['id'], 'accountNo': a['account_no'], 'accountName': a['account_name']} for a in accts]
-            })
-        campaigns.append({
-            'id': c['id'], 'name': c['name'],
-            'mediaRates': media_rates_list
-        })
-    return {
-        'id': adv['id'], 'name': adv['name'],
-        'bizNo': adv['biz_no'], 'email': adv['email'],
-        'contactName': adv['contact_name'], 'campaigns': campaigns
+async function doLogout() {
+  await api('/api/logout', { method: 'POST' });
+  location.reload();
+}
+
+// ── 네비 ──────────────────────────────────────────────
+function goto(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach((t, i) => {
+    t.classList.toggle('active', ['dash','adv','stl'][i] === page);
+  });
+  $(`page-${page}`).classList.add('active');
+  if (page === 'dash') renderDash();
+  if (page === 'adv') renderAdvList();
+  if (page === 'stl') populateStlAdvSelect();
+  if (page === 'admin') loadAdminPage();
+}
+
+// ── 데이터 로드 ───────────────────────────────────────
+async function loadAll() {
+  [advertisers, settlements] = await Promise.all([
+    api('/api/advertisers'), api('/api/settlements')
+  ]);
+}
+
+// ── 대시보드 ──────────────────────────────────────────
+function renderDash() {
+  const thisM = new Date().toISOString().slice(0, 7);
+  const mStls = settlements.filter(s => (s.start_date || '').slice(0, 7) === thisM);
+  const total = mStls.reduce((t, s) => t + (s.billing_total || 0), 0);
+
+  $('dash-greeting').textContent = `안녕하세요, ${currentUser.name}님 👋`;
+  $('stat-advs').textContent = advertisers.length + '개';
+  $('stat-count').textContent = mStls.length + '건';
+  $('stat-total').textContent = '₩' + fmt(total);
+  $('dash-hint').classList.toggle('hidden', advertisers.length > 0);
+
+  const recent = [...settlements].slice(0, 8);
+  $('recent-card').classList.toggle('hidden', !recent.length);
+  $('recent-body').innerHTML = recent.map(r => `
+    <tr>
+      <td>${r.advertiser || ''}</td>
+      <td style="color:#73726c">${r.campaign || ''}</td>
+      <td style="color:#73726c">${r.media || ''}</td>
+      <td class="text-right">₩${fmt(r.supply_amt)}</td>
+      <td class="text-right" style="font-weight:600">₩${fmt(r.billing_total)}</td>
+    </tr>
+  `).join('');
+}
+
+// ── 광고주 목록 ───────────────────────────────────────
+function renderAdvList() {
+  if (!advertisers.length) {
+    $('adv-list').innerHTML = `
+      <div class="card empty-state">
+        <div class="empty-icon">📋</div>
+        <div style="font-size:15px;margin-bottom:6px">등록된 광고주가 없습니다</div>
+        <div>광고주 추가 후 캠페인 · 매체별 수수료를 설정하세요</div>
+      </div>`;
+    return;
+  }
+  $('adv-list').innerHTML = advertisers.map(a => `
+    <div class="card" style="padding:18px">
+      <div class="flex-between" style="margin-bottom:${a.campaigns?.length ? 12 : 0}px">
+        <div>
+          <div style="font-size:15px;font-weight:600">${a.name}</div>
+          <div style="font-size:12px;color:#73726c;margin-top:2px">${[a.bizNo,a.email,a.contactName].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="openAdvModal(${a.id})">수정</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteAdv(${a.id})">삭제</button>
+        </div>
+      </div>
+      ${(a.campaigns || []).map(c => `
+        <div style="background:#faf9f7;border-radius:8px;padding:10px 14px;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:500;margin-bottom:6px">📁 ${c.name}</div>
+          <div>${(c.mediaRates || []).map(mr =>
+            `<span class="badge">${mr.media}: 마크업 ${pct(mr.markupRate)}% / 매체수수료 ${pct(mr.agencyFeeRate)}%${mr.paybackRate > 0 ? ` / 페이백 ${pct(mr.paybackRate)}%` : ''}${(mr.naverAccounts||[]).length > 0 ? ` / 네이버계정 ${mr.naverAccounts.length}개` : ''}</span>`
+          ).join('')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+// ── 광고주 모달 ───────────────────────────────────────
+let campData = [];
+
+function openAdvModal(advId) {
+  editingAdv = advId ? advertisers.find(a => a.id === advId) : null;
+  $('adv-modal-title').textContent = editingAdv ? '광고주 수정' : '광고주 추가';
+  $('adv-name').value = editingAdv?.name || '';
+  $('adv-biz').value = editingAdv?.bizNo || '';
+  $('adv-contact').value = editingAdv?.contactName || '';
+  $('adv-email').value = editingAdv?.email || '';
+  campData = JSON.parse(JSON.stringify(editingAdv?.campaigns || []));
+  renderCamps();
+  $('adv-modal').classList.remove('hidden');
+}
+
+function closeAdvModal() {
+  $('adv-modal').classList.add('hidden');
+}
+
+function renderCamps() {
+  const NEEDS_ACCOUNT = ['네이버SA','네이버GFA','네이버NOSP','구글','메타','트위터','X(트위터)','크리테오','카카오SA','카카오모먼트','카카오브검','카카오키워드','카카오톡채널'];
+  const ACCOUNT_LABEL = {
+    '네이버SA':'비고 계정번호', '네이버GFA':'비고 계정번호', '네이버NOSP':'비고 계정번호',
+    '구글':'계정 ID (예: 196-947-7609)', '메타':'Account Id / Group',
+    '트위터':'Account No', 'X(트위터)':'Account No',
+    '크리테오':'Account Name (예: Locknlockmall KR)',
+    '카카오SA':'자산 ID', '카카오모먼트':'자산/월렛 ID',
+    '카카오브검':'자산 ID', '카카오키워드':'자산 ID', '카카오톡채널':'월렛 ID',
+  };
+  const FX_MEDIA = ['구글','메타','트위터','X(트위터)','틱톡','애플서치애드','크리테오'];
+
+  let html = '';
+  if (campData.length === 0) {
+    html = '<div style="text-align:center;padding:24px;color:#999;font-size:13px;background:#fff;border-radius:10px">+ 캠페인 추가 버튼을 눌러 캠페인을 만드세요</div>';
+  }
+
+  campData.forEach((c, ci) => {
+    // 캠페인 카드 - 흰 배경, 그림자
+    html += '<div style="background:#fff;border:1px solid #ddd;border-radius:12px;overflow:hidden;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">';
+
+    // 캠페인 헤더 - 진한 배경
+    html += '<div style="background:#e8e6e0;padding:10px 14px;display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:11px;font-weight:700;color:#555;min-width:48px;letter-spacing:0.3px">캠페인</span>';
+    html += '<input style="flex:1;padding:7px 12px;border:1.5px solid #ccc;border-radius:7px;font-size:14px;font-weight:600;background:#fff;color:#1a1a18;outline:none" placeholder="예: 사방넷" value="' + (c.name||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].name=this.value">';
+    html += '<button onclick="delCamp(' + ci + ')" style="padding:5px 12px;border:1px solid #f09595;border-radius:6px;background:#fce8e8;color:#a32d2d;font-size:12px;cursor:pointer;white-space:nowrap;font-weight:500">삭제</button>';
+    html += '</div>';
+
+    // 매체 목록
+    html += '<div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">';
+
+    if ((c.mediaRates||[]).length === 0) {
+      html += '<div style="text-align:center;padding:14px;color:#aaa;font-size:12px;border:1.5px dashed #ddd;border-radius:8px">+ 매체 추가 버튼으로 매체를 추가하세요</div>';
     }
 
-@app.route('/api/advertisers')
-@require_login
-def get_advertisers():
-    conn = get_db()
-    advs = db_fetchall(conn, 'SELECT id FROM advertisers WHERE user_id=?', (session['user_id'],))
-    result = [get_adv_full(conn, a['id']) for a in advs]
-    if PG: conn.close()
-    return jsonify(result)
+    (c.mediaRates||[]).forEach((mr, mi) => {
+      const needsAcct = NEEDS_ACCOUNT.includes(mr.media);
+      const acctLabel = ACCOUNT_LABEL[mr.media] || '계정번호';
+      const needsFx = FX_MEDIA.includes(mr.media);
+      const accts = mr.naverAccounts || [];
 
-@app.route('/api/advertisers', methods=['POST'])
-@require_login
-def create_advertiser():
-    d = request.json
-    conn = get_db()
-    adv_id = db_insert(conn, 'INSERT INTO advertisers (user_id, name, biz_no, email, contact_name) VALUES (?,?,?,?,?)',
-        (session['user_id'], d['name'], d.get('bizNo',''), d.get('email',''), d.get('contactName','')))
-    for ci, camp in enumerate(d.get('campaigns', [])):
-        camp_id = db_insert(conn, 'INSERT INTO campaigns (advertiser_id, name, sort_order) VALUES (?,?,?)', (adv_id, camp['name'], ci))
-        for mi, mr in enumerate(camp.get('mediaRates', [])):
-            mr_id = db_insert(conn, 'INSERT INTO media_rates (campaign_id, media, markup_rate, agency_fee_rate, payback_rate, sort_order) VALUES (?,?,?,?,?,?)',
-                (camp_id, mr['media'], mr.get('markupRate',0), mr.get('agencyFeeRate',0), mr.get('paybackRate',0), mi))
-            for acct in mr.get('naverAccounts', []):
-                if acct.get('accountNo','').strip():
-                    db_execute(conn, 'INSERT INTO naver_accounts (media_rate_id, account_no, account_name) VALUES (?,?,?)',
-                        (mr_id, acct['accountNo'].strip(), acct.get('accountName','').strip()))
-    db_commit(conn)
-    if PG: conn.close()
-    return jsonify({'success': True, 'id': adv_id})
+      // 매체 박스 - 연한 배경
+      html += '<div style="background:#faf9f7;border:1.5px solid #ddd;border-radius:9px;overflow:hidden">';
 
-@app.route('/api/advertisers/<int:adv_id>', methods=['PUT'])
-@require_login
-def update_advertiser(adv_id):
-    d = request.json
-    conn = get_db()
-    db_execute(conn, 'UPDATE advertisers SET name=?, biz_no=?, email=?, contact_name=? WHERE id=? AND user_id=?',
-        (d['name'], d.get('bizNo',''), d.get('email',''), d.get('contactName',''), adv_id, session['user_id']))
-    camps = db_fetchall(conn, 'SELECT id FROM campaigns WHERE advertiser_id=?', (adv_id,))
-    for c in camps:
-        mrs = db_fetchall(conn, 'SELECT id FROM media_rates WHERE campaign_id=?', (c['id'],))
-        for mr in mrs:
-            db_execute(conn, 'DELETE FROM naver_accounts WHERE media_rate_id=?', (mr['id'],))
-        db_execute(conn, 'DELETE FROM media_rates WHERE campaign_id=?', (c['id'],))
-    db_execute(conn, 'DELETE FROM campaigns WHERE advertiser_id=?', (adv_id,))
-    for ci, camp in enumerate(d.get('campaigns', [])):
-        camp_id = db_insert(conn, 'INSERT INTO campaigns (advertiser_id, name, sort_order) VALUES (?,?,?)', (adv_id, camp['name'], ci))
-        for mi, mr in enumerate(camp.get('mediaRates', [])):
-            mr_id = db_insert(conn, 'INSERT INTO media_rates (campaign_id, media, markup_rate, agency_fee_rate, payback_rate, sort_order) VALUES (?,?,?,?,?,?)',
-                (camp_id, mr['media'], mr.get('markupRate',0), mr.get('agencyFeeRate',0), mr.get('paybackRate',0), mi))
-            for acct in mr.get('naverAccounts', []):
-                if acct.get('accountNo','').strip():
-                    db_execute(conn, 'INSERT INTO naver_accounts (media_rate_id, account_no, account_name) VALUES (?,?,?)',
-                        (mr_id, acct['accountNo'].strip(), acct.get('accountName','').strip()))
-    db_commit(conn)
-    if PG: conn.close()
-    return jsonify({'success': True})
+      // 매체 메인 행
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;flex-wrap:wrap">';
 
-@app.route('/api/advertisers/<int:adv_id>', methods=['DELETE'])
-@require_login
-def delete_advertiser(adv_id):
-    conn = get_db()
-    camps = db_fetchall(conn, 'SELECT id FROM campaigns WHERE advertiser_id=?', (adv_id,))
-    for c in camps:
-        mrs = db_fetchall(conn, 'SELECT id FROM media_rates WHERE campaign_id=?', (c['id'],))
-        for mr in mrs:
-            db_execute(conn, 'DELETE FROM naver_accounts WHERE media_rate_id=?', (mr['id'],))
-        db_execute(conn, 'DELETE FROM media_rates WHERE campaign_id=?', (c['id'],))
-    db_execute(conn, 'DELETE FROM campaigns WHERE advertiser_id=?', (adv_id,))
-    db_execute(conn, 'DELETE FROM advertisers WHERE id=? AND user_id=?', (adv_id, session['user_id']))
-    db_commit(conn)
-    if PG: conn.close()
-    return jsonify({'success': True})
+      // 매체 선택
+      html += '<select style="width:130px;padding:6px 10px;border:1.5px solid #ccc;border-radius:7px;font-size:13px;font-weight:600;background:#fff;color:#1a1a18;cursor:pointer" onchange="campData[' + ci + '].mediaRates[' + mi + '].media=this.value;renderCamps()">';
+      MEDIA_LIST.forEach(m => { html += '<option' + (m === mr.media ? ' selected' : '') + '>' + m + '</option>'; });
+      html += '</select>';
+
+      // 구분선
+      html += '<div style="width:1px;height:24px;background:#ddd;margin:0 4px"></div>';
+
+      // 수수료 3개
+      [['마크업','markupRate'],['매체수수료','agencyFeeRate'],['페이백','paybackRate']].forEach(([lbl,key]) => {
+        const val = Math.round((mr[key]||0)*100);
+        html += '<div style="display:flex;align-items:center;gap:4px">';
+        html += '<span style="font-size:11px;color:#888;white-space:nowrap">' + lbl + '</span>';
+        html += '<div style="position:relative;width:54px"><input type="number" min="0" max="100" step="0.5" value="' + val + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].' + key + '=parseFloat(this.value||0)/100" style="width:100%;padding:5px 16px 5px 7px;border:1.5px solid #ccc;border-radius:6px;font-size:13px;text-align:right;background:#fff;color:#1a1a18;outline:none"><span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:10px;color:#999;pointer-events:none">%</span></div>';
+        html += '</div>';
+      });
+
+      html += '<div style="flex:1"></div>';
+
+      // 환율
+      if (needsFx) {
+        var fxChk = mr.hasFx ? 'checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;color:#666;white-space:nowrap;padding:4px 9px;border:1.5px solid #ccc;border-radius:6px;background:#fff"><input type="checkbox" ' + fxChk + ' onchange="toggleFx(' + ci + ',' + mi + ',this.checked)"> 환율</label>';
+      }
+
+      // 계정 버튼
+      if (needsAcct) {
+        const acctCount = accts.length;
+        const acctColor = acctCount > 0 ? '#2d5a27' : '#888';
+        const acctBg = acctCount > 0 ? '#edf5ea' : '#fff';
+        const acctBorder = acctCount > 0 ? '#a8c8a0' : '#ccc';
+        html += '<button onclick="addNaverAcct(' + ci + ',' + mi + ')" style="padding:5px 10px;border:1.5px solid ' + acctBorder + ';border-radius:6px;background:' + acctBg + ';font-size:11px;color:' + acctColor + ';cursor:pointer;white-space:nowrap;font-weight:500">';
+        html += acctCount > 0 ? '계정 ' + acctCount + '개 ＋' : '+ 계정';
+        html += '</button>';
+      }
+
+      // 삭제
+      html += '<button onclick="delMedia(' + ci + ',' + mi + ')" style="width:26px;height:26px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;color:#aaa;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>';
+      html += '</div>';
+
+      // 계정번호 입력
+      if (needsAcct && accts.length > 0) {
+        html += '<div style="padding:10px 12px;background:#f2f5f0;border-top:1.5px solid #c5d4ba">';
+        html += '<div style="font-size:11px;color:#2d5a27;margin-bottom:8px;font-weight:600">📋 ' + acctLabel + '</div>';
+        accts.forEach((a, ai) => {
+          html += '<div style="display:grid;grid-template-columns:1fr 1.5fr 26px;gap:6px;margin-bottom:6px;align-items:center">';
+          html += '<input placeholder="계정번호" value="' + (a.accountNo||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountNo=this.value" style="padding:7px 10px;border:1.5px solid #b5cba8;border-radius:7px;font-size:12px;background:#fff;color:#1a1a18;outline:none">';
+          html += '<input placeholder="계정명 (선택)" value="' + (a.accountName||'').replace(/"/g,'&quot;') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].naverAccounts[' + ai + '].accountName=this.value" style="padding:7px 10px;border:1.5px solid #b5cba8;border-radius:7px;font-size:12px;background:#fff;color:#1a1a18;outline:none">';
+          html += '<button onclick="delNaverAcct(' + ci + ',' + mi + ',' + ai + ')" style="width:26px;height:26px;border:1px solid #b5cba8;border-radius:6px;background:#fff;cursor:pointer;color:#aaa;font-size:14px;display:flex;align-items:center;justify-content:center">×</button>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // 환율 입력
+      if (needsFx && mr.hasFx) {
+        html += '<div style="padding:10px 12px;background:#fdf8f0;border-top:1.5px solid #e8d5a3;display:flex;align-items:center;gap:10px">';
+        html += '<span style="font-size:11px;color:#92600a;font-weight:700;white-space:nowrap">💱 환율</span>';
+        html += '<select style="padding:6px 8px;border:1.5px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff;color:#633806" onchange="campData[' + ci + '].mediaRates[' + mi + '].fxCurrency=this.value">';
+        ['USD','EUR','GBP','JPY','CNY','SGD','AUD','CAD'].forEach(cur => {
+          html += '<option' + (mr.fxCurrency === cur ? ' selected' : '') + '>' + cur + '</option>';
+        });
+        html += '</select>';
+        html += '<input type="number" min="0" step="0.01" placeholder="환율 (원, 예: 1380)" value="' + (mr.fxRate||'') + '" oninput="campData[' + ci + '].mediaRates[' + mi + '].fxRate=parseFloat(this.value||0)" style="flex:1;padding:6px 10px;border:1.5px solid #e8d5a3;border-radius:6px;font-size:12px;background:#fff">';
+        html += '</div>';
+      }
+
+      html += '</div>'; // 매체 박스 끝
+    });
+
+    // 매체 추가 버튼
+    html += '<div style="display:flex;gap:8px;padding-top:4px">';
+    html += '<button onclick="addMedia(' + ci + ')" style="padding:7px 14px;border:1.5px dashed #bbb;border-radius:8px;background:transparent;font-size:12px;color:#888;cursor:pointer;font-weight:500">＋ 매체 추가</button>';
+    html += '<button onclick="addWbMedia(' + ci + ')" style="padding:7px 14px;border:1.5px dashed #c9b3f5;border-radius:8px;background:transparent;font-size:12px;color:#9b59b6;cursor:pointer;font-weight:500">＋ 와이즈버즈</button>';
+    html += '</div>';
+
+    html += '</div>'; // padding
+    html += '</div>'; // 캠페인 카드
+  });
+
+  $('camp-list').innerHTML = html;
+}
+
+function addCamp() {
+  campData.push({ name: '', mediaRates: [] });
+  renderCamps();
+}
+function delCamp(i) {
+  campData.splice(i, 1);
+  renderCamps();
+}
+function addMedia(ci) {
+  campData[ci].mediaRates.push({ media: '구글', markupRate: 0.1, agencyFeeRate: 0, paybackRate: 0, naverAccounts: [], wbMedia: '' });
+  renderCamps();
+}
+function addNaverAcct(ci, mi) {
+  if (!campData[ci].mediaRates[mi].naverAccounts) campData[ci].mediaRates[mi].naverAccounts = [];
+  campData[ci].mediaRates[mi].naverAccounts.push({ accountNo: '', accountName: '' });
+  renderCamps();
+}
+function delNaverAcct(ci, mi, ai) {
+  campData[ci].mediaRates[mi].naverAccounts.splice(ai, 1);
+  renderCamps();
+}
+function toggleFx(ci, mi, checked) {
+  campData[ci].mediaRates[mi].hasFx = checked;
+  if (!checked) {
+    campData[ci].mediaRates[mi].fxCurrency = '';
+    campData[ci].mediaRates[mi].fxRate = 0;
+  }
+  renderCamps();
+}
+function addFx(ci, mi) {
+  campData[ci].mediaRates[mi].hasFx = true;
+  campData[ci].mediaRates[mi].fxCurrency = campData[ci].mediaRates[mi].fxCurrency || 'USD';
+  campData[ci].mediaRates[mi].fxRate = campData[ci].mediaRates[mi].fxRate || 0;
+  renderCamps();
+}
+function removeFx(ci, mi) {
+  campData[ci].mediaRates[mi].hasFx = false;
+  campData[ci].mediaRates[mi].fxCurrency = '';
+  campData[ci].mediaRates[mi].fxRate = 0;
+  renderCamps();
+}
+function delMedia(ci, mi) {
+  campData[ci].mediaRates.splice(mi, 1);
+  renderCamps();
+}
+
+async function saveAdv() {
+  const name = $('adv-name').value.trim();
+  if (!name) { alert('광고주명을 입력해주세요'); return; }
+  const body = {
+    name, bizNo: $('adv-biz').value, email: $('adv-email').value,
+    contactName: $('adv-contact').value, campaigns: campData
+  };
+  if (editingAdv) {
+    await api(`/api/advertisers/${editingAdv.id}`, { method: 'PUT', body: JSON.stringify(body) });
+  } else {
+    await api('/api/advertisers', { method: 'POST', body: JSON.stringify(body) });
+  }
+  closeAdvModal();
+  advertisers = await api('/api/advertisers');
+  renderAdvList();
+}
+
+async function deleteAdv(id) {
+  if (!confirm('삭제하시겠습니까?')) return;
+  await api(`/api/advertisers/${id}`, { method: 'DELETE' });
+  advertisers = await api('/api/advertisers');
+  renderAdvList();
+}
+
+// ── 정산 처리 ─────────────────────────────────────────
+function populateStlAdvSelect() {
+  const sel = $('stl-adv');
+  sel.innerHTML = '<option value="">선택하세요</option>' +
+    advertisers.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  $('stl-camp').innerHTML = '<option value="">선택하세요</option>';
+  $('stl-camp').disabled = true;
+}
+
+function onStlAdvChange() {
+  const advId = parseInt($('stl-adv').value);
+  const adv = advertisers.find(a => a.id === advId);
+  const sel = $('stl-camp');
+  if (!adv) { sel.innerHTML = '<option value="">선택하세요</option>'; sel.disabled = true; return; }
+  sel.innerHTML = '<option value="">선택하세요</option>' +
+    (adv.campaigns || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.disabled = false;
+}
+
+function stlNext1() {
+  const advId = parseInt($('stl-adv').value);
+  const campId = parseInt($('stl-camp').value);
+  const period = $('stl-period').value;
+  if (!advId || !campId || !period) { alert('모든 항목을 선택해주세요'); return; }
+
+  stlState.adv = advertisers.find(a => a.id === advId);
+  stlState.camp = stlState.adv?.campaigns?.find(c => c.id === campId);
+  stlState.period = period;
+  stlState.billingDate = $('stl-billing-date').value;
+  stlState.inputs = {};
+
+  $('stl-info-label').textContent = `${stlState.adv?.name} · ${stlState.camp?.name} · ${period}`;
+  renderMediaInputs();
+  showStep(2);
+}
+
+function renderMediaInputs() {
+  const mrs = stlState.camp?.mediaRates || [];
+  $('stl-media-inputs').innerHTML = mrs.map((mr, i) => `
+    <div class="stl-media-box" id="mbox-${i}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px;font-weight:600">${mr.media}</span>
+        <span class="badge">마크업 ${pct(mr.markupRate)}% · 매체수수료 ${pct(mr.agencyFeeRate)}%${mr.paybackRate > 0 ? ` · 페이백 ${pct(mr.paybackRate)}%` : ''}</span>
+        <span id="mbox-check-${i}" style="margin-left:auto;font-size:12px;color:#1D9E75;font-weight:500;display:none">✓ 입력됨</span>
+      </div>
+      <div class="stl-input-grid">
+        <div><label class="lbl">공급가액 (VAT 별도) *</label>
+          <input id="mi-amt-${i}" placeholder="118,997,968" oninput="onAmtChange(${i})">
+        </div>
+        <div><label class="lbl">계정 ID</label><input id="mi-id-${i}" placeholder="계정 ID"></div>
+        <div><label class="lbl">전월 오차 (차감: -)</label><input id="mi-diff-${i}" placeholder="0"></div>
+        <div><label class="lbl">비고</label><input id="mi-note-${i}" placeholder="참고사항"></div>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${mr.media && (mr.media === '네이버GFA' || mr.media.includes('GFA')) ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-gfa-${i}').click()">📊 네이버GFA XLS 파싱</button>
+          <input type="file" id="mfile-gfa-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseGfaFile(${i}, this)">
+        ` : mr.media && mr.media.includes('구글') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-google-${i}').click()">🔵 구글 ZIP/PDF 파싱</button>
+          <input type="file" id="mfile-google-${i}" accept=".zip,.pdf" style="display:none" onchange="parseGoogleFile(${i}, this)">
+        ` : mr.media && (mr.media.includes('메타') || mr.media.includes('Meta') || mr.media.includes('페이스북')) ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-meta-${i}').click()">📘 메타 ZIP/PDF 파싱</button>
+          <input type="file" id="mfile-meta-${i}" accept=".zip,.pdf" style="display:none" onchange="parseMetaFile(${i}, this)">
+        ` : mr.media && (mr.media.includes('트위터') || mr.media.includes('Twitter') || mr.media.includes('X(트위터)')) ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-twitter-${i}').click()">🐦 트위터(X) ZIP/PDF 파싱</button>
+          <input type="file" id="mfile-twitter-${i}" accept=".zip,.pdf" style="display:none" onchange="parseTwitterFile(${i}, this)">
+        ` : mr.media && mr.media.includes('크리테오') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-criteo-${i}').click()">📈 크리테오 XLS 파싱</button>
+          <input type="file" id="mfile-criteo-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseCriteoFile(${i}, this)">
+        ` : mr.media && mr.media.includes('카카오') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-kakao-${i}').click()">[카카오] XLS 파싱</button>
+          <input type="file" id="mfile-kakao-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseKakaoFile(${i}, this)">
+        ` : mr.media && mr.media.includes('와이즈버즈') ? `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-wb-${i}').click()">🐦 와이즈버즈 XLSX 파싱</button>
+          <input type="file" id="mfile-wb-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseWbFile(${i}, this)">
+        ` : `
+          <button class="btn btn-secondary btn-sm" onclick="$('mfile-${i}').click()">📎 네이버 XLS 파싱</button>
+          <input type="file" id="mfile-${i}" accept=".xls,.xlsx" style="display:none" onchange="parseFile(${i}, this)">
+        `}
+        <span id="mfile-note-${i}" style="font-size:11px;color:#73726c"></span>
+      </div>
+      <div id="mfile-detail-${i}"></div>
+    </div>
+  `).join('');
+}
+
+function onAmtChange(i) {
+  const val = $(`mi-amt-${i}`).value;
+  const has = val && parseFloat(val.replace(/,/g,'')) > 0;
+  $(`mbox-${i}`).classList.toggle('filled', !!has);
+  $(`mbox-check-${i}`).style.display = has ? 'inline' : 'none';
+}
+
+function triggerFile(i) { $(`mfile-${i}`).click(); }
+
+async function parseFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/naver', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    // 계정번호별 내역 표시
+    const byAcct = data.data;
+    const detailHtml = Object.entries(byAcct).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${v.accountNo || key}</span>
+          ${v.accountName ? ` · ${v.accountName}` : ''}
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#f0faf6;border-radius:8px;border:1px solid #5DCAA5">
+        <div style="font-size:11px;font-weight:500;color:#0F6E56;margin-bottom:6px">계정별 내역</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>
+    `;
+
+    // 등록되지 않은 계정 안내
+    if (data.allAccounts && naverAccounts.length > 0) {
+      const regNos = naverAccounts.map(a => a.accountNo);
+      const unknown = data.allAccounts.filter(([no]) => !regNos.includes(no));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외됨: ${unknown.map(([no,nm])=>`${no}(${nm})`).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '금액을 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+async function parseGoogleFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중... (파일이 크면 시간이 걸릴 수 있어요)';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/google', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([id, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #e6f1fb">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${id}</span>
+          ${v.accountName ? ` · ${v.accountName}` : ''}
+          <span style="color:#888;font-size:11px;margin-left:4px">${v.filename ? '(' + v.filename.split('/').pop() + ')' : ''}</span>
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.subtotal)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#e6f1fb;border-radius:8px;border:1px solid #85b7eb">
+        <div style="font-size:11px;font-weight:500;color:#0c447c;margin-bottom:6px">🔵 구글 계정별 소계 (VAT 별도)</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountId));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외: ${unknown.map(a=>a.accountId).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (${allAccts.length}개 PDF)`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 — ${allAccts.length}개 PDF 전체 합산`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '계정 정보를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
 
 
-# ───────────── 정산 API ───────────────────────────────
-@app.route('/api/settlements')
-@require_login
-def get_settlements():
-    conn = get_db()
-    rows = db_fetchall(conn, 'SELECT * FROM settlements WHERE user_id=? ORDER BY created_at DESC LIMIT 200', (session['user_id'],))
-    if PG: conn.close()
-    return jsonify(rows)
+async function parseMetaFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
 
-@app.route('/api/settlements', methods=['POST'])
-@require_login
-def save_settlements():
-    rows = request.json
-    now = datetime.now().isoformat()
-    conn = get_db()
-    for r in rows:
-        db_execute(conn, 
-            'INSERT INTO settlements (user_id, advertiser, campaign, media, period, start_date, end_date, supply_amt, markup_rate, markup, agency_fee_rate, agency_fee, total, billing_date, prev_diff, billing_ad_cost, billing_markup, billing_total, diff, account_id, note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            (session['user_id'], r.get('advertiser'), r.get('campaign'), r.get('media'),
-             r.get('period'), r.get('startDate'), r.get('endDate'),
-             r.get('supplyAmt',0), r.get('markupRate',0), r.get('markup',0),
-             r.get('agencyFeeRate',0), r.get('agencyFee',0), r.get('total',0),
-             r.get('billingDate'), r.get('prevDiff',0), r.get('billingAdCost',0),
-             r.get('billingMarkup',0), r.get('billingTotal',0), r.get('diff',0),
-             r.get('accountId',''), r.get('note',''), now))
-    db_commit(conn)
-    if PG: conn.close()
-    return jsonify({'success': True})
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/meta', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    // 인보이스번호를 계정ID에 자동 입력 (첫 번째 항목 기준)
+    const firstItem = Object.values(data.data)[0];
+    if (firstItem?.invoiceNo) {
+      const idInput = $(`mi-id-${i}`);
+      if (idInput && !idInput.value) idInput.value = firstItem.invoiceNo;
+    }
+
+    // 내역 표시
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">Invoice #${v.invoiceNo}</span>
+          ${v.advertiser ? ` · ${v.advertiser}` : ''}
+          ${v.period ? ` · ${v.period}` : ''}
+          <span style="font-size:11px;color:#888;margin-left:4px">(계정: ${v.accountId})</span>
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.subtotal)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#eaf3de;border-radius:8px;border:1px solid #97c459">
+        <div style="font-size:11px;font-weight:500;color:#27500a;margin-bottom:6px">📘 메타 인보이스 내역 (소계 기준)</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountId));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외: ${unknown.map(a=>a.accountId).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (${allAccts.length}개 인보이스)`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 — ${allAccts.length}개 인보이스 전체 합산`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
 
 
-# ───────────── 파일 파싱 API ──────────────────────────
-@app.route('/api/parse/naver', methods=['POST'])
-@require_login
-def parse_naver():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
+async function parseTwitterFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
 
-    file = request.files['file']
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    # 필터링할 계정번호 목록 (프론트에서 전달, 없으면 전체)
-    filter_accounts = request.form.getlist('accounts')  # ['1836943', '1937341', ...]
-    result = {}   # {account_no: amount}
-    all_rows = [] # 전체 파싱 결과 (디버그용)
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
 
-    try:
-        file_bytes = file.read()
-        parsed_rows = []  # [{account_no, account_name, media_name, amount}]
+  const r = await fetch('/api/parse/twitter', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
 
-        if ext == 'xls':
-            import xlrd
-            wb = xlrd.open_workbook(file_contents=file_bytes)
-            sheet_name = next((n for n in wb.sheet_names() if '세금' in n or '계산서' in n), None)
-            sheet = wb.sheet_by_name(sheet_name) if sheet_name else wb.sheet_by_index(0)
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
 
-            hdr_row, cols = -1, {}
-            for i in range(min(sheet.nrows, 15)):
-                vals = [str(sheet.cell_value(i, j)).strip() for j in range(sheet.ncols)]
-                if any('계정명' in v for v in vals) or any('공급가액' in v for v in vals):
-                    hdr_row = i
-                    for j, v in enumerate(vals):
-                        cols[v] = j
-                    break
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
 
-            if hdr_row >= 0:
-                acct_col = next((j for v, j in cols.items() if '계정명' in v), -1)
-                amt_col  = next((j for v, j in cols.items() if '공급가액' in v), -1)
-                prod_col = next((j for v, j in cols.items() if '품목' in v or '상품' in v), -1)
-                note_col = next((j for v, j in cols.items() if '비고' in v), -1)
+    // Invoice No를 계정ID에 자동 입력
+    const firstItem = Object.values(data.data)[0];
+    if (firstItem?.invoiceNo) {
+      const idInput = $(`mi-id-${i}`);
+      if (idInput && !idInput.value) idInput.value = firstItem.invoiceNo;
+    }
 
-                for i in range(hdr_row + 1, sheet.nrows):
-                    if acct_col < 0 or amt_col < 0:
-                        break
-                    acct_name = str(sheet.cell_value(i, acct_col)).strip()
-                    note_val  = str(sheet.cell_value(i, note_col)).strip() if note_col >= 0 else ''
-                    prod_val  = str(sheet.cell_value(i, prod_col)).strip() if prod_col >= 0 else ''
-                    try:
-                        amt = sheet.cell_value(i, amt_col)
-                        if isinstance(amt, (int, float)) and amt > 0 and acct_name not in ('', 'None'):
-                            # 비고에서 계정번호 추출 (숫자만 있는 경우)
-                            account_no = ''
-                            try:
-                                clean = note_val.replace(',', '').strip()
-                                if clean.isdigit():
-                                    account_no = clean
-                            except:
-                                pass
-                            parsed_rows.append({
-                                'accountNo': account_no,
-                                'accountName': acct_name,
-                                'media': prod_val,
-                                'amount': float(amt)
-                            })
-                    except:
-                        pass
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">Invoice #${v.invoiceNo}</span>
+          ${v.advertiser ? ` · ${v.advertiser}` : ''}
+          ${v.period ? ` · ${v.period}` : ''}
+          <span style="font-size:11px;color:#888;margin-left:4px">(Account: ${v.accountId})</span>
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.subtotal)}</span>
+      </div>
+    `).join('');
 
-        else:  # xlsx
-            import io as _io
-            wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), read_only=True, data_only=True)
-            sheet_name = next((n for n in wb.sheetnames if '세금' in n or '계산서' in n), None)
-            ws = wb[sheet_name] if sheet_name else wb.active
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#e6f1fb;border-radius:8px;border:1px solid #85b7eb">
+        <div style="font-size:11px;font-weight:500;color:#0c447c;margin-bottom:6px">🐦 트위터(X) 인보이스 내역 (소계 기준)</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
 
-            rows_data = list(ws.iter_rows(values_only=True))
-            hdr_row, cols = -1, {}
-            for i, row in enumerate(rows_data[:15]):
-                if not row:
-                    continue
-                strs = [str(c).strip() if c is not None else '' for c in row]
-                if any('계정명' in v for v in strs) or any('공급가액' in v for v in strs):
-                    hdr_row = i
-                    cols = {v: j for j, v in enumerate(strs)}
-                    break
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountId));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외: ${unknown.map(a=>a.accountId).join(', ')}</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (${allAccts.length}개 인보이스)`;
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 — ${allAccts.length}개 인보이스 전체 합산`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
 
-            if hdr_row >= 0:
-                acct_col = next((j for v, j in cols.items() if '계정명' in v), -1)
-                amt_col  = next((j for v, j in cols.items() if '공급가액' in v), -1)
-                prod_col = next((j for v, j in cols.items() if '품목' in v or '상품' in v), -1)
-                note_col = next((j for v, j in cols.items() if '비고' in v), -1)
 
-                for row in rows_data[hdr_row + 1:]:
-                    if not row or acct_col < 0 or amt_col < 0:
-                        continue
-                    acct_name = str(row[acct_col]).strip() if row[acct_col] is not None else ''
-                    note_val  = str(row[note_col]).strip() if note_col >= 0 and row[note_col] is not None else ''
-                    prod_val  = str(row[prod_col]).strip() if prod_col >= 0 and row[prod_col] is not None else ''
-                    amt = row[amt_col]
-                    if isinstance(amt, (int, float)) and amt > 0 and acct_name not in ('None', ''):
-                        account_no = ''
-                        try:
-                            clean = note_val.replace(',', '').strip()
-                            if clean.isdigit():
-                                account_no = clean
-                        except:
-                            pass
-                        parsed_rows.append({
-                            'accountNo': account_no,
-                            'accountName': acct_name,
-                            'media': prod_val,
-                            'amount': float(amt)
-                        })
+async function parseGfaFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
 
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
 
-    if not parsed_rows:
-        return jsonify({'error': '금액 데이터를 찾지 못했습니다. 네이버 위임발행 파일이 맞는지 확인해주세요'}), 400
+  const r = await fetch('/api/parse/naver-gfa', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
 
-    # 계정번호 필터링 적용
-    if filter_accounts:
-        filtered = [r for r in parsed_rows if r['accountNo'] in filter_accounts]
-    else:
-        filtered = parsed_rows
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
 
-    # 계정번호별 합계
-    by_account = {}
-    for r in filtered:
-        key = r['accountNo'] or r['accountName']
-        if key not in by_account:
-            by_account[key] = {'accountNo': r['accountNo'], 'accountName': r['accountName'], 'total': 0, 'rows': []}
-        by_account[key]['total'] += r['amount']
-        by_account[key]['rows'].append({'media': r['media'], 'amount': r['amount']})
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
 
-    total = sum(v['total'] for v in by_account.values())
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${v.accountNo}</span>
+          ${v.accountName ? ` · ${v.accountName}` : ''}
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
 
-    return jsonify({
-        'data': by_account,
-        'total': total,
-        'allAccounts': list({r['accountNo']: r['accountName'] for r in parsed_rows if r['accountNo']}.items())
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#f0faf6;border-radius:8px;border:1px solid #5DCAA5">
+        <div style="font-size:11px;font-weight:500;color:#0F6E56;margin-bottom:6px">📊 네이버GFA 계정별 내역</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountNo));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = '✓ 파싱 완료';
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 ${allAccts.length}개 계정 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseCriteoFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/criteo', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;font-weight:500;color:#5f5e5a">${v.accountName}</span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#faeeda;border-radius:8px;border:1px solid #FAC775">
+        <div style="font-size:11px;font-weight:500;color:#633806;margin-bottom:6px">📈 크리테오 계정별 Invoicing Amount</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo.toLowerCase().trim());
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountNo.toLowerCase().trim()));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 계정 ${unknown.length}개 제외</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = '✓ 파싱 완료';
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 ${allAccts.length}개 계정 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+async function parseKakaoFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  const naverAccounts = mr?.naverAccounts || [];
+  const fd = new FormData();
+  fd.append('file', file);
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('accounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/kakao', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  if (data.total) {
+    $(`mi-amt-${i}`).value = Math.round(data.total).toString();
+    onAmtChange(i);
+
+    const detailHtml = Object.entries(data.data).map(([key, v]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:12px;color:#5f5e5a">
+          <span style="font-weight:500">${v.accountNo}</span> · ${v.accountName}
+        </span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>
+    `).join('');
+
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:10px;padding:10px 12px;background:#FFFAE6;border-radius:8px;border:1px solid #FAE100">
+        <div style="font-size:11px;font-weight:500;color:#3A1C00;margin-bottom:6px">카카오 계산서위임 내역</div>
+        ${detailHtml}
+        <div style="display:flex;justify-content:space-between;padding-top:6px;margin-top:4px;font-weight:600;font-size:13px">
+          <span>합계</span><span>₩${fmt(data.total)}</span>
+        </div>
+      </div>`;
+
+    const regNos = naverAccounts.map(a => a.accountNo);
+    const allAccts = data.allAccounts || [];
+    if (regNos.length > 0) {
+      const unknown = allAccts.filter(a => !regNos.includes(a.accountNo));
+      if (unknown.length > 0) {
+        $(`mfile-note-${i}`).innerHTML = `✓ 파싱 완료 &nbsp;|&nbsp; <span style="color:#ba7517">미등록 ${unknown.length}개 제외</span>`;
+      } else {
+        $(`mfile-note-${i}`).textContent = '✓ 파싱 완료';
+      }
+    } else {
+      $(`mfile-note-${i}`).textContent = `✓ 파싱 완료 (전체 ${allAccts.length}개 합산)`;
+    }
+  } else {
+    $(`mfile-note-${i}`).textContent = '데이터를 찾지 못했습니다. 직접 입력해주세요';
+  }
+}
+
+
+const WB_MEDIA_LIST = ['Meta', 'X(Twitter)', 'TikTok', 'Toss', '당근', 'Apple'];
+
+function addWbMedia(ci) {
+  // 와이즈버즈 매체 선택 팝업 대신 인라인 추가
+  WB_MEDIA_LIST.forEach(m => {
+    if (!campData[ci].mediaRates.find(mr => mr.media === `와이즈버즈_${m}`)) {
+      campData[ci].mediaRates.push({
+        media: `와이즈버즈_${m}`,
+        markupRate: 0, agencyFeeRate: 0, paybackRate: 0,
+        naverAccounts: [],
+        wbMedia: m,  // 와이즈버즈 내 매체명
+      });
+    }
+  });
+  renderCamps();
+}
+
+async function parseWbFile(i, input) {
+  const file = input.files[0];
+  if (!file) return;
+  $(`mfile-note-${i}`).textContent = '파싱 중...';
+  $(`mfile-detail-${i}`).innerHTML = '';
+
+  const mr = stlState.camp?.mediaRates?.[i];
+  // 이 매체가 와이즈버즈_Meta 형태면 wbMedia는 'Meta'
+  const wbMedia = mr?.wbMedia || mr?.media?.replace('와이즈버즈_', '') || '';
+  const naverAccounts = mr?.naverAccounts || [];
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('media', wbMedia);
+  // 메타 광고계정 ID 전달
+  naverAccounts.forEach(a => { if (a.accountNo) fd.append('metaAccounts', a.accountNo); });
+
+  const r = await fetch('/api/parse/wisebirds', { method: 'POST', body: fd, credentials: 'same-origin' });
+  const data = await r.json();
+
+  if (data.error) { $(`mfile-note-${i}`).textContent = '파싱 실패: ' + data.error; return; }
+
+  const mediaResult = data.result?.[wbMedia];
+  if (!mediaResult || mediaResult.total === 0) {
+    $(`mfile-note-${i}`).textContent = `${wbMedia} 금액이 없거나 0원입니다`;
+    // 전체 요약 보여주기
+    const summaryHtml = Object.entries(data.summary || {}).map(([m, v]) =>
+      `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
+        <span>${m}</span><span>₩${fmt(v)}</span>
+      </div>`
+    ).join('');
+    $(`mfile-detail-${i}`).innerHTML = `
+      <div style="margin-top:8px;padding:10px 12px;background:#f5f4f0;border-radius:8px;font-size:12px">
+        <div style="font-weight:500;margin-bottom:6px;color:#73726c">📋 ${data.sheetName} 전체 요약</div>
+        ${summaryHtml}
+      </div>`;
+    return;
+  }
+
+  $(`mi-amt-${i}`).value = Math.round(mediaResult.total).toString();
+  onAmtChange(i);
+
+  // 메타 상세내역
+  let detailHtml = '';
+  if (wbMedia === 'Meta' && Object.keys(mediaResult.detail || {}).length > 0) {
+    detailHtml = Object.entries(mediaResult.detail).map(([id, v]) =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f0efe9">
+        <span style="font-size:11px;color:#5f5e5a"><span style="font-weight:500">${v.advertiser}</span> <span style="color:#888">${id}</span></span>
+        <span style="font-size:12px;font-weight:600">₩${fmt(v.total)}</span>
+      </div>`
+    ).join('');
+  }
+
+  $(`mfile-detail-${i}`).innerHTML = `
+    <div style="margin-top:10px;padding:10px 12px;background:#f3eeff;border-radius:8px;border:1px solid #c9b3f5">
+      <div style="font-size:11px;font-weight:500;color:#6c3eb9;margin-bottom:6px">🐦 와이즈버즈 ${wbMedia} (${data.sheetName})</div>
+      ${detailHtml || ''}
+      <div style="display:flex;justify-content:space-between;padding-top:6px;font-weight:600;font-size:13px">
+        <span>합계</span><span>₩${fmt(mediaResult.total)}</span>
+      </div>
+    </div>`;
+
+  $(`mfile-note-${i}`).textContent = `✓ 파싱 완료`;
+}
+
+function stlCalc() {
+  const mrs = stlState.camp?.mediaRates || [];
+  const [y, m] = stlState.period.split('-');
+  const lastDay = new Date(+y, +m, 0).getDate();
+
+  stlState.rows = mrs.map((mr, i) => {
+    const amt = parseFloat(($(`mi-amt-${i}`)?.value || '0').replace(/,/g, '')) || 0;
+    if (!amt) return null;
+    const sa = amt, markup = sa * mr.markupRate, agencyFee = sa * mr.agencyFeeRate, total = sa + markup;
+    const pd = parseFloat(($(`mi-diff-${i}`)?.value || '0').replace(/,/g, '')) || 0;
+    const bAd = sa + pd, bMk = markup, bTotal = bAd + bMk;
+    return {
+      no: i + 1, advertiser: stlState.adv?.name, campaign: stlState.camp?.name, media: mr.media,
+      accountId: $(`mi-id-${i}`)?.value || '',
+      period: `${y}년 ${+m}월`,
+      startDate: `${stlState.period}-01`, endDate: `${stlState.period}-${String(lastDay).padStart(2,'0')}`,
+      supplyAmt: sa, markupRate: mr.markupRate, markup, agencyFeeRate: mr.agencyFeeRate, agencyFee,
+      paybackRate: mr.paybackRate, total, billingDate: stlState.billingDate,
+      prevDiff: pd, billingAdCost: bAd, billingMarkup: bMk, billingTotal: bTotal, diff: bAd - sa,
+      note: $(`mi-note-${i}`)?.value || '',
+      fxCurrency: mr.hasFx ? (mr.fxCurrency || 'USD') : 'KRW',
+      fxRate: mr.hasFx ? (mr.fxRate || 0) : null,
+    };
+  }).filter(Boolean);
+
+  if (!stlState.rows.length) { alert('최소 하나 이상의 금액을 입력해주세요'); return; }
+
+  $('stl-result-label').textContent = `${stlState.adv?.name} · ${stlState.camp?.name} · ${stlState.period}`;
+  const totalSA = stlState.rows.reduce((t, r) => t + r.supplyAmt, 0);
+  const totalBT = stlState.rows.reduce((t, r) => t + r.billingTotal, 0);
+  const totalPD = stlState.rows.reduce((t, r) => t + r.prevDiff, 0);
+
+  $('stl-result-body').innerHTML = stlState.rows.map(r => `
+    <tr>
+      <td style="font-weight:600">${r.media}</td>
+      <td class="text-right">₩${fmt(r.supplyAmt)}</td>
+      <td class="text-right">${pct(r.markupRate)}%</td>
+      <td class="text-right">${r.markup > 0 ? '₩' + fmt(r.markup) : '-'}</td>
+      <td class="text-right">${pct(r.agencyFeeRate)}%</td>
+      <td class="text-right">${r.agencyFee > 0 ? '₩' + fmt(r.agencyFee) : '-'}</td>
+      <td class="text-right">₩${fmt(r.total)}</td>
+      <td class="text-right ${r.prevDiff < 0 ? 'tag-red' : r.prevDiff > 0 ? 'tag-green' : ''}">${r.prevDiff ? fmt(r.prevDiff) : '-'}</td>
+      <td class="text-right" style="font-weight:600">₩${fmt(r.billingTotal)}</td>
+    </tr>
+  `).join('') + `
+    <tr class="total-row">
+      <td>합계</td>
+      <td class="text-right">₩${fmt(totalSA)}</td>
+      <td colspan="5"></td>
+      <td class="text-right">${fmt(totalPD)}</td>
+      <td class="text-right">₩${fmt(totalBT)}</td>
+    </tr>`;
+  showStep(3);
+}
+
+async function stlFillTemplate(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const adv = stlState.adv;
+  const camp = stlState.camp;
+
+  if (!stlState.rows.length) {
+    alert('먼저 계산하기를 실행해주세요');
+    input.value = '';
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('template', file);
+  fd.append('rows', JSON.stringify(stlState.rows));
+  fd.append('advName', adv?.name || '');
+  fd.append('campName', camp?.name || '');
+  fd.append('period', stlState.period);
+  fd.append('billingDate', stlState.billingDate || '');
+  fd.append('advBizNo', adv?.bizNo || '');
+  fd.append('advEmail', adv?.email || '');
+
+  const btn = input.closest('label');
+  if (btn) btn.style.opacity = '0.6';
+
+  let r;
+  try {
+    r = await fetch('/api/export/fill-template', {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin'
+    });
+  } catch(e) {
+    if (btn) btn.style.opacity = '1';
+    input.value = '';
+    alert('네트워크 오류: ' + e.message);
+    return;
+  }
+
+  if (btn) btn.style.opacity = '1';
+  input.value = '';
+
+  if (!r.ok) {
+    let msg = '알 수 없는 오류 (status: ' + r.status + ')';
+    try { const err = await r.json(); msg = err.error || msg; } catch {}
+    alert('오류: ' + msg);
+    return;
+  }
+
+  // Content-Type 확인
+  const ct = r.headers.get('Content-Type') || '';
+  if (!ct.includes('spreadsheet') && !ct.includes('octet')) {
+    const txt = await r.text();
+    alert('서버 오류: ' + txt.slice(0, 200));
+    return;
+  }
+
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `세금계산서발행요청파일_${adv?.name}_${camp?.name}_${stlState.period}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function stlExport() {
+  const adv = stlState.adv;
+  const camp = stlState.camp;
+  const r = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({
+      rows: stlState.rows,
+      advName: adv?.name, campName: camp?.name,
+      period: stlState.period, billingDate: stlState.billingDate,
+      advBizNo: adv?.bizNo, advEmail: adv?.email
     })
-
-
-
-# ───────────── 메타 PDF 파싱 API ──────────────────────
-@app.route('/api/parse/meta', methods=['POST'])
-@require_login
-def parse_meta():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    filter_accounts = request.form.getlist('accounts')  # 등록된 Account Id 목록
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    results = []
-
-    try:
-        import zipfile, io as _io, pdfplumber, re
-
-        file_bytes = file.read()
-
-        def parse_single_meta_pdf(pdf_bytes, filename=''):
-            try:
-                with pdfplumber.open(_io.BytesIO(pdf_bytes)) as pdf:
-                    text = '\n'.join(p.extract_text() or '' for p in pdf.pages)
-
-                invoice_no  = ''
-                account_id  = ''
-                advertiser  = ''
-                subtotal    = 0
-                period_str  = ''
-                currency    = 'KRW'
-
-                # Invoice # 추출
-                m = re.search(r'Invoice\s*#[:\s]+([\d]+)', text)
-                if m:
-                    invoice_no = m.group(1).strip()
-
-                # Account Id / Group 추출
-                m2 = re.search(r'Account\s*Id\s*/\s*Group[:\s]+([\d]+)', text)
-                if m2:
-                    account_id = m2.group(1).strip()
-
-                # Advertiser 추출
-                m3 = re.search(r'Advertiser[:\s]+(.+?)\n', text)
-                if m3:
-                    advertiser = m3.group(1).strip()
-
-                # Billing Period 추출
-                m4 = re.search(r'Billing\s*Period[:\s]+([A-Za-z]+-\d+)', text)
-                if m4:
-                    period_str = m4.group(1).strip()
-
-                # Subtotal 추출 (VAT 제외 금액)
-                m5 = re.search(r'Subtotal[:\s]+([\d,]+)', text)
-                if m5:
-                    subtotal = int(m5.group(1).replace(',', ''))
-
-                # Invoice Currency 추출
-                m6 = re.search(r'Invoice\s*Currency[:\s]+([A-Z]{3})', text)
-                if m6:
-                    currency = m6.group(1).strip()
-
-                if (invoice_no or account_id) and subtotal > 0:
-                    return {
-                        'invoiceNo':  invoice_no,
-                        'accountId':  account_id,
-                        'advertiser': advertiser,
-                        'period':     period_str,
-                        'subtotal':   subtotal,
-                        'currency':   currency,
-                        'filename':   filename,
-                    }
-            except Exception as e:
-                pass
-            return None
-
-        if ext == 'zip':
-            with zipfile.ZipFile(_io.BytesIO(file_bytes)) as zf:
-                pdf_files = [n for n in zf.namelist() if n.lower().endswith('.pdf')]
-                for pdf_name in pdf_files:
-                    with zf.open(pdf_name) as pf:
-                        r = parse_single_meta_pdf(pf.read(), pdf_name)
-                        if r:
-                            results.append(r)
-        elif ext == 'pdf':
-            r = parse_single_meta_pdf(file_bytes, file.filename)
-            if r:
-                results.append(r)
-        else:
-            return jsonify({'error': 'ZIP 또는 PDF 파일만 지원합니다'}), 400
-
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
-
-    if not results:
-        return jsonify({'error': '메타 인보이스에서 데이터를 찾지 못했습니다'}), 400
-
-    # Account Id 기준 필터링
-    if filter_accounts:
-        filtered = [r for r in results if r['accountId'] in filter_accounts]
-    else:
-        filtered = results
-
-    total = sum(r['subtotal'] for r in filtered)
-
-    return jsonify({
-        'data':        {r['accountId'] or r['invoiceNo']: r for r in filtered},
-        'total':       total,
-        'allAccounts': results,
-    })
-
-# ───────────── 트위터(X) PDF 파싱 API ─────────────────
-@app.route('/api/parse/twitter', methods=['POST'])
-@require_login
-def parse_twitter():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    filter_accounts = request.form.getlist('accounts')
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    results = []
-
-    try:
-        import zipfile, io as _io, pdfplumber, re
-        file_bytes = file.read()
-
-        def parse_single_twitter_pdf(pdf_bytes, filename=''):
-            try:
-                with pdfplumber.open(_io.BytesIO(pdf_bytes)) as pdf:
-                    text = '\n'.join(p.extract_text() or '' for p in pdf.pages)
-
-                invoice_no = ''
-                account_no = ''
-                advertiser = ''
-                period_str = ''
-                subtotal   = 0
-                currency   = 'KRW'
-
-                # Invoice Number
-                m = re.search(r'Invoice\s*Number\s*[\n\r]+([\d]+)', text)
-                if m:
-                    invoice_no = m.group(1).strip()
-
-                # Account No.
-                m2 = re.search(r'Account\s*No\.?\s*[:\s]+([\d]+)', text)
-                if m2:
-                    account_no = m2.group(1).strip()
-
-                # Advertiser
-                m3 = re.search(r'Advertiser[:\s]+(.+?)\n', text)
-                if m3:
-                    advertiser = m3.group(1).strip()
-
-                # Invoice Period
-                m4 = re.search(r'Invoice\s*Period\s*[\n\r]+([A-Z]+-\d+)', text)
-                if m4:
-                    period_str = m4.group(1).strip()
-
-                # Sub-Total (VAT 제외)
-                m5 = re.search(r'Sub-Total\s+[A-Z]{3}\s+([\d,]+\.?\d*)', text)
-                if m5:
-                    subtotal = int(float(m5.group(1).replace(',', '')))
-
-                # Currency
-                m6 = re.search(r'Sub-Total\s+([A-Z]{3})', text)
-                if m6:
-                    currency = m6.group(1).strip()
-
-                if (invoice_no or account_no) and subtotal > 0:
-                    return {
-                        'invoiceNo':  invoice_no,
-                        'accountId':  account_no,
-                        'advertiser': advertiser,
-                        'period':     period_str,
-                        'subtotal':   subtotal,
-                        'currency':   currency,
-                        'filename':   filename,
-                    }
-            except Exception as e:
-                pass
-            return None
-
-        if ext == 'zip':
-            with zipfile.ZipFile(_io.BytesIO(file_bytes)) as zf:
-                pdf_files = [n for n in zf.namelist() if n.lower().endswith('.pdf')]
-                for pdf_name in pdf_files:
-                    with zf.open(pdf_name) as pf:
-                        r = parse_single_twitter_pdf(pf.read(), pdf_name)
-                        if r:
-                            results.append(r)
-        elif ext == 'pdf':
-            r = parse_single_twitter_pdf(file_bytes, file.filename)
-            if r:
-                results.append(r)
-        else:
-            return jsonify({'error': 'ZIP 또는 PDF 파일만 지원합니다'}), 400
-
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
-
-    if not results:
-        return jsonify({'error': '트위터(X) 인보이스에서 데이터를 찾지 못했습니다'}), 400
-
-    # Account No. 기준 필터링
-    if filter_accounts:
-        filtered = [r for r in results if r['accountId'] in filter_accounts]
-    else:
-        filtered = results
-
-    total = sum(r['subtotal'] for r in filtered)
-
-    return jsonify({
-        'data':        {r['accountId'] or r['invoiceNo']: r for r in filtered},
-        'total':       total,
-        'allAccounts': results,
-    })
-
-# ───────────── 네이버 GFA 파싱 API ───────────────────
-@app.route('/api/parse/naver-gfa', methods=['POST'])
-@require_login
-def parse_naver_gfa():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    filter_accounts = request.form.getlist('accounts')  # 비고 번호 목록
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-
-    try:
-        import io as _io
-        file_bytes = file.read()
-
-        if ext == 'xls':
-            import xlrd
-            wb = xlrd.open_workbook(file_contents=file_bytes)
-            sheet = wb.sheet_by_index(0)
-            rows_data = [
-                [sheet.cell_value(r, c) for c in range(sheet.ncols)]
-                for r in range(sheet.nrows)
-            ]
-        else:
-            wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), read_only=True, data_only=True)
-            ws = wb.active
-            rows_data = [list(row) for row in ws.iter_rows(values_only=True)]
-
-        # 헤더 행 찾기
-        hdr_row, cols = -1, {}
-        for i, row in enumerate(rows_data[:5]):
-            strs = [str(c).strip() if c is not None else '' for c in row]
-            if any('공급가액' in v for v in strs) and any('비고' in v for v in strs):
-                hdr_row = i
-                cols = {v: j for j, v in enumerate(strs)}
-                break
-
-        if hdr_row < 0:
-            return jsonify({'error': '헤더를 찾을 수 없습니다. GFA 위임발행 파일인지 확인해주세요'}), 400
-
-        # 컬럼 인덱스
-        amt_col    = next((j for v, j in cols.items() if '공급가액' in v), -1)
-        note_col   = next((j for v, j in cols.items() if '비고' in v), -1)
-        acct_col   = next((j for v, j in cols.items() if '계정' in v and '이름' in v), -1)
-        adv_col    = next((j for v, j in cols.items() if '광고주명' in v), -1)
-
-        # 데이터 파싱
-        parsed = {}  # {account_no: {accountNo, accountName, total}}
-        for row in rows_data[hdr_row + 1:]:
-            if not row or amt_col < 0 or note_col < 0:
-                continue
-            amt  = row[amt_col]
-            note = row[note_col]
-            acct_name = str(row[acct_col]).strip() if acct_col >= 0 and row[acct_col] else ''
-            adv_name  = str(row[adv_col]).strip() if adv_col >= 0 and row[adv_col] else ''
-
-            if not isinstance(amt, (int, float)) or amt == 0:
-                continue
-
-            # 비고에서 계정번호 추출
-            account_no = ''
-            try:
-                clean = str(note).replace(',', '').strip()
-                if clean.replace('.', '').isdigit():
-                    account_no = str(int(float(clean)))
-            except:
-                pass
-
-            if not account_no:
-                continue
-
-            if account_no not in parsed:
-                parsed[account_no] = {
-                    'accountNo':   account_no,
-                    'accountName': acct_name or adv_name,
-                    'total': 0,
-                    'rows': []
-                }
-            parsed[account_no]['total'] += float(amt)
-            parsed[account_no]['rows'].append({
-                'accountName': acct_name,
-                'advertiser':  adv_name,
-                'amount':      float(amt)
-            })
-
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
-
-    if not parsed:
-        return jsonify({'error': '데이터를 찾지 못했습니다'}), 400
-
-    # 필터링
-    if filter_accounts:
-        filtered = {k: v for k, v in parsed.items() if k in filter_accounts}
-    else:
-        filtered = parsed
-
-    if not filtered:
-        return jsonify({
-            'error': f'등록된 계정번호와 일치하는 데이터가 없습니다. 파일 내 계정번호: {", ".join(sorted(parsed.keys())[:10])}',
-        }), 400
-
-    total = sum(v['total'] for v in filtered.values())
-
-    return jsonify({
-        'data':        filtered,
-        'total':       total,
-        'allAccounts': [{'accountNo': k, 'accountName': v['accountName'], 'total': v['total']}
-                        for k, v in parsed.items()]
-    })
-
-# ───────────── 크리테오 파싱 API ──────────────────────
-@app.route('/api/parse/criteo', methods=['POST'])
-@require_login
-def parse_criteo():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    filter_accounts = request.form.getlist('accounts')  # Account Name 목록
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-
-    try:
-        import io as _io
-        file_bytes = file.read()
-
-        if ext == 'xls':
-            import xlrd
-            wb = xlrd.open_workbook(file_contents=file_bytes)
-            ws = wb.sheet_by_index(0)
-            rows_data = [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
-        else:
-            wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), read_only=True, data_only=True)
-            ws = wb.active
-            rows_data = [list(row) for row in ws.iter_rows(values_only=True)]
-
-        # 헤더 행 찾기
-        hdr_row, cols = -1, {}
-        for i, row in enumerate(rows_data[:5]):
-            strs = [str(c).strip() if c is not None else '' for c in row]
-            if any('Account Name' in v or 'account' in v.lower() for v in strs):
-                hdr_row = i
-                cols = {v: j for j, v in enumerate(strs)}
-                break
-
-        if hdr_row < 0:
-            return jsonify({'error': '헤더를 찾을 수 없습니다. 크리테오 정산파일인지 확인해주세요'}), 400
-
-        # 컬럼 인덱스
-        acct_col = next((j for v, j in cols.items() if 'Account Name' in v or 'account name' in v.lower()), -1)
-        amt_col  = next((j for v, j in cols.items() if 'Invoicing' in v and 'Amount' in v and 'Total' not in v), -1)
-
-        if acct_col < 0 or amt_col < 0:
-            return jsonify({'error': f'Account Name 또는 Invoicing Amount 컬럼을 찾을 수 없습니다'}), 400
-
-        # 데이터 파싱
-        parsed = {}
-        for row in rows_data[hdr_row + 1:]:
-            if not row:
-                continue
-            acct = str(row[acct_col]).strip() if row[acct_col] is not None else ''
-            amt  = row[amt_col]
-            if not acct or acct in ('NaN', 'nan', '', 'None') or not isinstance(amt, (int, float)) or amt == 0:
-                continue
-            if acct not in parsed:
-                parsed[acct] = {'accountNo': acct, 'accountName': acct, 'total': 0}
-            parsed[acct]['total'] += float(amt)
-
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
-
-    if not parsed:
-        return jsonify({'error': '데이터를 찾지 못했습니다'}), 400
-
-    # Account Name으로 필터링 (대소문자 무시)
-    if filter_accounts:
-        filter_lower = [f.lower().strip() for f in filter_accounts]
-        filtered = {k: v for k, v in parsed.items() if k.lower().strip() in filter_lower}
-    else:
-        filtered = parsed
-
-    if not filtered:
-        return jsonify({
-            'error': f'등록된 계정명과 일치하는 데이터가 없습니다. 파일 내 계정: {", ".join(list(parsed.keys())[:5])}...'
-        }), 400
-
-    total = sum(v['total'] for v in filtered.values())
-
-    return jsonify({
-        'data':        filtered,
-        'total':       total,
-        'allAccounts': [{'accountNo': k, 'accountName': v['accountName'], 'total': v['total']}
-                        for k, v in parsed.items()]
-    })
-
-# ───────────── 카카오 파싱 API (브검/모먼트/톡채널/클릭스 통합) ──
-@app.route('/api/parse/kakao', methods=['POST'])
-@require_login
-def parse_kakao():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    filter_accounts = request.form.getlist('accounts')  # 자산ID 또는 월렛ID
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-
-    try:
-        import io as _io
-        file_bytes = file.read()
-
-        if ext == 'xls':
-            import xlrd
-            raw_wb = xlrd.open_workbook(file_contents=file_bytes)
-            sheet_names = raw_wb.sheet_names()
-        else:
-            raw_wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), read_only=True, data_only=True)
-            sheet_names = raw_wb.sheetnames
-
-        # 계산서 위임 시트 찾기
-        target_sheet = next(
-            (s for s in sheet_names if '계산서' in s and ('위임' in s or '발행' in s)
-             and '수정' not in s),
-            None
-        )
-        if not target_sheet:
-            return jsonify({'error': '계산서 위임 시트를 찾을 수 없습니다'}), 400
-
-        if ext == 'xls':
-            ws = raw_wb.sheet_by_name(target_sheet)
-            rows_data = [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
-        else:
-            ws = raw_wb[target_sheet]
-            rows_data = [list(row) for row in ws.iter_rows(values_only=True)]
-
-        # 헤더 찾기
-        hdr_row, cols = -1, {}
-        for i, row in enumerate(rows_data[:5]):
-            strs = [str(c).strip() if c is not None else '' for c in row]
-            if any('공급가액' in v for v in strs):
-                hdr_row = i
-                cols = {v: j for j, v in enumerate(strs)}
-                break
-
-        if hdr_row < 0:
-            return jsonify({'error': '헤더(공급가액)를 찾을 수 없습니다'}), 400
-
-        # 컬럼 인덱스
-        amt_col   = next((j for v, j in cols.items() if '공급가액' in v), -1)
-        name_col  = next((j for v, j in cols.items() if '광고계정명' in v or '자산 이름' in v or '자산이름' in v), -1)
-        asset_col = next((j for v, j in cols.items() if '자산' in v and 'ID' in v.upper() or '자산ID' in v), -1)
-        wallet_col= next((j for v, j in cols.items() if '월렛' in v and ('ID' in v.upper() or 'ID' in v) and '이름' not in v), -1)
-
-        if amt_col < 0:
-            return jsonify({'error': '공급가액 컬럼을 찾을 수 없습니다'}), 400
-
-        # 데이터 파싱
-        parsed = {}
-        for row in rows_data[hdr_row + 1:]:
-            if not row:
-                continue
-            amt = row[amt_col]
-            if not isinstance(amt, (int, float)) or amt == 0:
-                continue
-
-            # ID 추출 (자산ID 우선, 없으면 월렛ID)
-            acct_id = ''
-            if asset_col >= 0 and row[asset_col] is not None:
-                v = str(row[asset_col]).strip()
-                if v not in ('', 'None', 'nan'):
-                    acct_id = v.split('.')[0]  # 소수점 제거
-            if not acct_id and wallet_col >= 0 and row[wallet_col] is not None:
-                v = str(row[wallet_col]).strip()
-                if v not in ('', 'None', 'nan'):
-                    acct_id = v.split('.')[0]
-
-            if not acct_id:
-                continue
-
-            # 정수형으로 정규화
-            try:
-                acct_id = str(int(float(acct_id)))
-            except:
-                pass
-
-            acct_name = str(row[name_col]).strip() if name_col >= 0 and row[name_col] is not None else acct_id
-
-            if acct_id not in parsed:
-                parsed[acct_id] = {'accountNo': acct_id, 'accountName': acct_name, 'total': 0}
-            parsed[acct_id]['total'] += float(amt)
-
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
-
-    if not parsed:
-        return jsonify({'error': '데이터를 찾지 못했습니다'}), 400
-
-    # 필터링 (자산ID/월렛ID)
-    if filter_accounts:
-        norm = [str(int(float(a))) if a.replace('.','').isdigit() else a for a in filter_accounts]
-        filtered = {k: v for k, v in parsed.items() if k in norm}
-    else:
-        filtered = parsed
-
-    if not filtered:
-        return jsonify({
-            'error': f'등록된 ID와 일치하는 데이터가 없습니다. 파일 내 ID: {", ".join(list(parsed.keys())[:8])}'
-        }), 400
-
-    total = sum(v['total'] for v in filtered.values())
-    return jsonify({
-        'data':        filtered,
-        'total':       total,
-        'allAccounts': [{'accountNo': k, 'accountName': v['accountName'], 'total': v['total']}
-                        for k, v in parsed.items()]
-    })
-
-# ───────────── 와이즈버즈 파싱 API ───────────────────
-@app.route('/api/parse/wisebirds', methods=['POST'])
-@require_login
-def parse_wisebirds():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    # 요청한 매체 목록 (예: ["Meta", "TikTok"])
-    target_media = request.form.getlist('media')
-    # 메타 광고계정 ID 목록
-    meta_accounts = request.form.getlist('metaAccounts')
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-
-    try:
-        import io as _io, re
-        file_bytes = file.read()
-
-        if ext == 'xls':
-            import xlrd
-            raw_wb = xlrd.open_workbook(file_contents=file_bytes)
-            sheet_names = raw_wb.sheet_names()
-        else:
-            raw_wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), read_only=True, data_only=True)
-            sheet_names = raw_wb.sheetnames
-
-        # 가장 최신 시트 (첫 번째 시트)
-        sheet_name = sheet_names[0]
-
-        if ext == 'xls':
-            ws = raw_wb.sheet_by_name(sheet_name)
-            rows_data = [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
-        else:
-            ws = raw_wb[sheet_name]
-            rows_data = [list(row) for row in ws.iter_rows(values_only=True)]
-
-        # 매체명 정규화 매핑
-        MEDIA_MAP = {
-            'Meta': ['Meta', 'meta', '메타'],
-            'X(Twitter)': ['X(Twitter)', 'Twitter', 'twitter', 'X', '트위터'],
-            'TikTok': ['TikTok', 'tiktok', '틱톡'],
-            'Toss': ['Toss', 'toss', '토스'],
-            '당근': ['당근', 'Daangn', 'daangn'],
-            'Apple': ['Apple', 'apple', '애플'],
-        }
-
-        # ── 1. 상단 요약표 파싱 (인보이스 금액 컬럼) ──
-        summary = {}  # {표준매체명: 인보이스금액}
-        media_col, inv_col = -1, -1
-
-        for i, row in enumerate(rows_data[:15]):
-            strs = [str(c).strip() if c is not None else '' for c in row]
-            if any('인보이스 금액' in v or '인보이스금액' in v for v in strs):
-                media_col = next((j for j, v in enumerate(strs) if '매체' in v), 1)
-                inv_col   = next((j for j, v in enumerate(strs) if '인보이스 금액' in v or '인보이스금액' in v), 3)
-                # 이후 행들에서 매체별 금액 읽기
-                for row2 in rows_data[i+1:]:
-                    if not row2: continue
-                    media_val = str(row2[media_col]).strip() if row2[media_col] is not None else ''
-                    inv_val   = row2[inv_col] if inv_col < len(row2) else None
-                    if 'Total' in media_val or not media_val or media_val in ('None', 'nan'): continue
-                    if not isinstance(inv_val, (int, float)) or inv_val == 0: continue
-                    # 표준 매체명으로 변환
-                    for std, aliases in MEDIA_MAP.items():
-                        if any(a.lower() in media_val.lower() for a in aliases):
-                            summary[std] = float(inv_val)
-                            break
-                break
-
-        # ── 2. 메타 상세내역 파싱 (광고계정 ID 기반) ──
-        meta_detail = {}  # {account_id: {invoiceNo, advertiser, amount}}
-        in_meta_detail = False
-        acct_id_col = inv_amount_col = adv_col = inv_no_col = -1
-
-        for i, row in enumerate(rows_data):
-            strs = [str(c).strip() if c is not None else '' for c in row]
-            # 메타 상세내역 헤더 찾기
-            if any('인보이스 번호' in v for v in strs) and any('광고 계정 ID' in v or '광고계정ID' in v for v in strs):
-                in_meta_detail = True
-                inv_no_col    = next((j for j,v in enumerate(strs) if '인보이스 번호' in v), -1)
-                adv_col       = next((j for j,v in enumerate(strs) if '광고주' in v), -1)
-                inv_amount_col= next((j for j,v in enumerate(strs) if '인보이스 금액' in v or '금액' in v), -1)
-                acct_id_col   = next((j for j,v in enumerate(strs) if '광고 계정 ID' in v or '광고계정ID' in v), -1)
-                continue
-            if in_meta_detail and acct_id_col >= 0:
-                if not any(c is not None for c in row): continue
-                acct_id = str(row[acct_id_col]).strip() if row[acct_id_col] is not None else ''
-                amt     = row[inv_amount_col] if inv_amount_col >= 0 and inv_amount_col < len(row) else None
-                inv_no  = str(row[inv_no_col]).strip() if inv_no_col >= 0 and row[inv_no_col] is not None else ''
-                adv     = str(row[adv_col]).strip() if adv_col >= 0 and row[adv_col] is not None else ''
-                if not acct_id or acct_id in ('None', 'nan', '') or not isinstance(amt, (int, float)) or amt == 0:
-                    continue
-                if acct_id not in meta_detail:
-                    meta_detail[acct_id] = {'accountId': acct_id, 'advertiser': adv, 'invoiceNo': inv_no, 'total': 0}
-                meta_detail[acct_id]['total'] += float(amt)
-
-        # ── 3. 결과 조합 ──
-        result = {}
-
-        for media in target_media:
-            # 표준 매체명 찾기
-            std_media = next((k for k, aliases in MEDIA_MAP.items() if any(a.lower() in media.lower() for a in aliases + [media])), media)
-
-            if std_media == 'Meta' and meta_accounts:
-                # 메타: 광고계정 ID로 필터링
-                filtered = {k: v for k, v in meta_detail.items()
-                           if any(acc in k for acc in meta_accounts)}
-                total = sum(v['total'] for v in filtered.values())
-                result[media] = {
-                    'media': media,
-                    'total': total,
-                    'detail': filtered,
-                    'invoiceNos': list({v['invoiceNo'] for v in filtered.values() if v['invoiceNo']}),
-                }
-            else:
-                # 기타 매체: 요약표에서 합계
-                total = summary.get(std_media, 0)
-                result[media] = {
-                    'media': media,
-                    'total': total,
-                    'detail': {},
-                    'invoiceNos': [],
-                }
-
-        return jsonify({
-            'result':       result,
-            'summary':      summary,
-            'allMetaAccts': list(meta_detail.keys()),
-            'sheetName':    sheet_name,
-        })
-
-    except Exception as e:
-        import traceback
-        return jsonify({'error': f'파싱 오류: {str(e)}', 'trace': traceback.format_exc()}), 500
-
-# ───────────── 구글 ZIP 파싱 API ──────────────────────
-@app.route('/api/parse/google', methods=['POST'])
-@require_login
-def parse_google():
-    if 'file' not in request.files:
-        return jsonify({'error': '파일이 없습니다'}), 400
-
-    file = request.files['file']
-    filter_accounts = request.form.getlist('accounts')  # ['196-947-7609', ...]
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-
-    results = []  # [{accountId, accountName, subtotal}]
-
-    try:
-        import zipfile, io as _io, pdfplumber, re
-
-        file_bytes = file.read()
-
-        def parse_single_pdf(pdf_bytes, filename=''):
-            """PDF 한 개에서 계정ID + 소계 추출"""
-            try:
-                with pdfplumber.open(_io.BytesIO(pdf_bytes)) as pdf:
-                    text = '\n'.join(p.extract_text() or '' for p in pdf.pages)
-
-                account_id   = ''
-                account_name = ''
-                subtotal     = 0
-
-                # 계정 ID 추출: "계정 ID: 196-947-7609"
-                m = re.search(r'계정\s*ID\s*[:\:]?\s*([\d\-]+)', text)
-                if m:
-                    account_id = m.group(1).strip()
-
-                # 계정명 추출: "계정: ㈜다우기술"
-                m2 = re.search(r'계정\s*[:\：]\s*(.+?)\n', text)
-                if m2:
-                    account_name = m2.group(1).strip()
-
-                # 소계(KRW) 추출 - 첫 번째 매칭만 사용
-                m3 = re.search(r'소계\(KRW\)\s*[₩￦]?\s*([\d,]+)', text)
-                if m3:
-                    subtotal = int(m3.group(1).replace(',', ''))
-
-                if account_id and subtotal > 0:
-                    return {'accountId': account_id, 'accountName': account_name,
-                            'subtotal': subtotal, 'filename': filename}
-            except Exception as e:
-                pass
-            return None
-
-        if ext == 'zip':
-            with zipfile.ZipFile(_io.BytesIO(file_bytes)) as zf:
-                pdf_files = [n for n in zf.namelist() if n.lower().endswith('.pdf')]
-                for pdf_name in pdf_files:
-                    with zf.open(pdf_name) as pf:
-                        r = parse_single_pdf(pf.read(), pdf_name)
-                        if r:
-                            results.append(r)
-
-        elif ext == 'pdf':
-            r = parse_single_pdf(file_bytes, file.filename)
-            if r:
-                results.append(r)
-
-        else:
-            return jsonify({'error': 'ZIP 또는 PDF 파일만 지원합니다'}), 400
-
-    except Exception as e:
-        return jsonify({'error': f'파싱 오류: {str(e)}'}), 500
-
-    if not results:
-        return jsonify({'error': 'PDF에서 계정 정보를 찾지 못했습니다'}), 400
-
-    # 계정번호 필터링
-    if filter_accounts:
-        filtered = [r for r in results if r['accountId'] in filter_accounts]
-    else:
-        filtered = results
-
-    total = sum(r['subtotal'] for r in filtered)
-
-    return jsonify({
-        'data': {r['accountId']: r for r in filtered},
-        'total': total,
-        'allAccounts': [{'accountId': r['accountId'], 'accountName': r['accountName'],
-                         'subtotal': r['subtotal'], 'filename': r['filename']} for r in results]
-    })
-
-# ───────────── 기존 파일 채우기 API ──────────────────
-@app.route('/api/export/fill-template', methods=['POST'])
-@require_login
-def fill_template():
-    """기존 세금계산서발행요청파일에 이번달 데이터를 이어 붙여서 반환"""
-    import json, io as _io
-
-    if 'template' not in request.files:
-        return jsonify({'error': '템플릿 파일이 없습니다'}), 400
-
-    rows       = json.loads(request.form.get('rows', '[]'))
-    adv_name   = request.form.get('advName', '')
-    camp_name  = request.form.get('campName', '')
-    period     = request.form.get('period', '')
-    billing_date = request.form.get('billingDate', '')
-    adv_biz_no = request.form.get('advBizNo', '')
-    adv_email  = request.form.get('advEmail', '')
-    user_name  = session.get('user_name', '')
-    user_team  = session.get('user_team', '')
-
-    template_file = request.files['template']
-
-    try:
-        wb = openpyxl.load_workbook(_io.BytesIO(template_file.read()))
-    except Exception as e:
-        return jsonify({'error': f'파일을 열 수 없습니다: {str(e)}'}), 400
-
-    # ── 세일즈양식 시트 처리 ──
-    if '세일즈양식' not in wb.sheetnames:
-        return jsonify({'error': '세일즈양식 시트를 찾을 수 없습니다'}), 400
-
-    ws = wb['세일즈양식']
-
-    # 병합행 목록 미리 수집
-    from openpyxl.cell.cell import MergedCell
-    merged_rows = set()
-    for merge in ws.merged_cells.ranges:
-        for rr in range(merge.min_row, merge.max_row + 1):
-            merged_rows.add(rr)
-
-    # 마지막 번호(B열) + 실제 데이터 있는 마지막 행 둘 다 찾기
-    last_no = 0
-    last_data_row = 2
-    for row in ws.iter_rows(min_row=3, max_row=ws.max_row):
-        rnum = row[0].row
-        if rnum in merged_rows:
-            continue
-        b = row[1].value   # B열 = 번호
-        e = row[4].value   # E열 = 광고주명
-        g = row[6].value   # G열 = 매체
-        i = row[8].value   # I열 = 매입월
-        l = row[11].value  # L열 = 공급가액
-        # 실제 데이터가 있는 행이면 last_data_row 갱신
-        if any(v is not None for v in [e, g, i, l]):
-            last_data_row = rnum
-        # 번호 최대값 갱신
-        if b is not None:
-            try:
-                no = int(str(b).strip())
-                if no > last_no:
-                    last_no = no
-            except:
-                pass
-
-    # 마감행(병합행) 건너뛰고 첫 번째 빈 행 찾기
-    next_row = last_data_row + 1
-    while next_row in merged_rows:
-        next_row += 1
-    next_no  = last_no + 1
-
-    # 날짜 파싱
-    from datetime import datetime
-    try:
-        y, m = period.split('-')
-        import calendar
-        last_day = calendar.monthrange(int(y), int(m))[1]
-        start_date = datetime(int(y), int(m), 1)
-        end_date   = datetime(int(y), int(m), last_day)
-        period_str = f"{y}년 {int(m)}월"
-    except:
-        start_date = end_date = None
-        period_str = period
-
-    try:
-        billing_dt = datetime.strptime(billing_date, '%Y-%m-%d') if billing_date else None
-    except Exception:
-        billing_dt = None
-
-    if not rows:
-        return jsonify({'error': '정산 데이터가 없습니다'}), 400
-
-    for r in rows:
-        sa    = r.get('supplyAmt', 0) or 0
-        mr    = r.get('markupRate', 0) or 0
-        af    = r.get('agencyFeeRate', 0) or 0
-        markup    = round(sa * mr)
-        agency_fee = round(sa * af)
-        total     = sa + markup
-        prev_diff  = r.get('prevDiff', 0) or 0
-        billing_ad = sa + prev_diff
-        billing_mk = markup
-        billing_total = billing_ad + billing_mk
-        diff = billing_ad - sa
-
-        row_vals = {
-            2:  next_no,
-            3:  user_team,
-            4:  user_name,
-            5:  r.get('advertiser', adv_name),
-            6:  r.get('campaign', camp_name),
-            7:  r.get('media', ''),
-            8:  r.get('accountId', ''),
-            9:  period_str,
-            10: start_date,
-            11: end_date,
-            12: sa,
-            13: sa,           # 광고비 = 공급가액
-            14: af if af else None,
-            15: agency_fee if af else 0,
-            16: mr if mr else None,
-            17: markup if mr else 0,
-            18: total,
-            19: billing_dt,
-            20: prev_diff if prev_diff else None,
-            21: billing_ad,
-            22: billing_mk if markup else None,
-            23: billing_total,
-            24: None,          # 마케팅프로그램비
-            25: diff if diff else 0,
-            26: r.get('note', ''),
-            27: r.get('fxCurrency', 'KRW') or 'KRW',
-            28: r.get('fxRate') if r.get('fxRate') else (1 if not r.get('fxCurrency') or r.get('fxCurrency') == 'KRW' else None),
-        }
-
-        import copy, re
-        ref_row = last_data_row  # 마지막 실데이터 행 서식/수식 참조
-
-        # 참조행에서 수식 패턴 읽기 (data_only=False로 열어야 수식 읽힘)
-        # wb는 data_only=False로 열려있으므로 수식 그대로 읽힘
-        ref_formulas = {}
-        for ref_cell in ws[ref_row]:
-            if ref_cell.column <= 33:
-                v = ref_cell.value
-                if isinstance(v, str) and v.startswith('='):
-                    ref_formulas[ref_cell.column] = v
-
-        for col, val in row_vals.items():
-            cell = ws.cell(row=next_row, column=col)
-            if isinstance(cell, MergedCell):
-                continue
-
-            # 참조행에 수식이 있는 열이면 → 수식 행번호만 바꿔서 적용
-            if col in ref_formulas:
-                formula = ref_formulas[col]
-                # 수식 내 숫자(행번호)를 new_row로 교체 (알파벳 뒤 숫자만)
-                new_formula = re.sub(
-                    r'([A-Za-z]+)' + str(ref_row),
-                    lambda m: m.group(1) + str(next_row),
-                    formula
-                )
-                cell.value = new_formula
-            else:
-                cell.value = val
-
-            # 참조 행 서식 복사
-            ref_cell = ws.cell(row=ref_row, column=col)
-            if not isinstance(ref_cell, MergedCell):
-                try:
-                    if ref_cell.has_style:
-                        cell.font      = copy.copy(ref_cell.font)
-                        cell.fill      = copy.copy(ref_cell.fill)
-                        cell.border    = copy.copy(ref_cell.border)
-                        cell.alignment = copy.copy(ref_cell.alignment)
-                        cell.number_format = ref_cell.number_format
-                except:
-                    pass
-
-        next_no  += 1
-        next_row += 1
-        # 다음 행도 병합행이면 건너뜀
-        while next_row in merged_rows:
-            next_row += 1
-
-    # ── 월 마감 병합행 추가 ──
-    try:
-        # 기간에서 월 추출 (예: "2026-03" → "3월")
-        month_label = f"{int(m)}월 마감"
-        closing_row = next_row  # 마지막 데이터 다음 행
-
-        # B:AB 병합
-        ws.merge_cells(start_row=closing_row, start_column=2,
-                       end_row=closing_row,   end_column=28)
-
-        # B열에 "N월 마감" 텍스트
-        closing_cell = ws.cell(row=closing_row, column=2, value=month_label)
-
-        # 기존 마감행 서식 복사 (있으면)
-        existing_closing = next((mr.min_row for mr in ws.merged_cells.ranges
-                                  if mr.min_col == 2 and mr.max_col == 28
-                                  and mr.min_row < closing_row), None)
-        if existing_closing:
-            ref_close = ws.cell(row=existing_closing, column=2)
-            if ref_close.has_style:
-                import copy
-                closing_cell.font      = copy.copy(ref_close.font)
-                closing_cell.fill      = copy.copy(ref_close.fill)
-                closing_cell.border    = copy.copy(ref_close.border)
-                closing_cell.alignment = copy.copy(ref_close.alignment)
-
-        # merged_rows 갱신
-        merged_rows.add(closing_row)
-    except Exception as e:
-        pass  # 마감행 추가 실패해도 나머지는 정상 저장
-
-    # ── 세발요청 시트 처리 ──
-    if '세발요청' in wb.sheetnames:
-        ws2 = wb['세발요청']
-
-        # 마지막 데이터 행 찾기
-        last_row2 = 1
-        for row in ws2.iter_rows(min_row=2, max_row=ws2.max_row):
-            if any(c.value is not None for c in row):
-                last_row2 = row[0].row
-
-        next_row2 = last_row2 + 1
-        first = True
-
-        for r in rows:
-            billing_ad = (r.get('supplyAmt') or 0) + (r.get('prevDiff') or 0)
-            billing_mk = round((r.get('supplyAmt') or 0) * (r.get('markupRate') or 0))
-
-            ws2.cell(row=next_row2, column=1, value=billing_date if first else None)
-            ws2.cell(row=next_row2, column=2, value=user_name if first else None)
-            ws2.cell(row=next_row2, column=3, value='통합발행' if first else None)
-            ws2.cell(row=next_row2, column=4, value=adv_biz_no if first else None)
-            ws2.cell(row=next_row2, column=5, value=adv_name if first else None)
-            ws2.cell(row=next_row2, column=6, value=adv_email if first else None)
-            ws2.cell(row=next_row2, column=9, value='후불')
-            ws2.cell(row=next_row2, column=10,
-                value=f"{r.get('period','')} {r.get('campaign','')} {r.get('media','')} 매체운영비")
-            c = ws2.cell(row=next_row2, column=11, value=billing_ad)
-            c.number_format = '#,##0'
-            ws2.cell(row=next_row2, column=14, value=r.get('note', ''))
-            next_row2 += 1
-            first = False
-
-            if billing_mk > 0:
-                ws2.cell(row=next_row2, column=9, value='후불')
-                ws2.cell(row=next_row2, column=10,
-                    value=f"{r.get('period','')} {r.get('campaign','')} {r.get('media','')} 대행수수료")
-                c2 = ws2.cell(row=next_row2, column=11, value=billing_mk)
-                c2.number_format = '#,##0'
-                next_row2 += 1
-
-    buf = _io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-
-    filename = f"세금계산서발행요청파일_{adv_name}_{camp_name}_{period}.xlsx"
-    return send_file(
-        buf, as_attachment=True,
-        download_name=filename,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
-# ───────────── XLSX 내보내기 API ──────────────────────
-@app.route('/api/export', methods=['POST'])
-@require_login
-def export_xlsx():
-    d = request.json
-    rows       = d.get('rows', [])
-    adv_name   = d.get('advName', '')
-    camp_name  = d.get('campName', '')
-    period     = d.get('period', '')
-    billing_date = d.get('billingDate', '')
-    adv_biz_no = d.get('advBizNo', '')
-    adv_email  = d.get('advEmail', '')
-    user_name  = session.get('user_name', '')
-    user_team  = session.get('user_team', '')
-
-    wb = openpyxl.Workbook()
-
-    # 헤더 스타일
-    hdr_fill = PatternFill(start_color='D3D1C7', end_color='D3D1C7', fill_type='solid')
-    hdr_font = Font(bold=True, size=10)
-    hdr_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    thin = Side(style='thin', color='888780')
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    def style_header(ws, headers, col_widths):
-        for col, (h, w) in enumerate(zip(headers, col_widths), 1):
-            cell = ws.cell(row=1, column=col, value=h)
-            cell.fill = hdr_fill
-            cell.font = hdr_font
-            cell.alignment = hdr_align
-            cell.border = border
-            ws.column_dimensions[get_column_letter(col)].width = w
-        ws.row_dimensions[1].height = 30
-
-    # ── 세일즈양식 시트 ──
-    ws1 = wb.active
-    ws1.title = '세일즈양식'
-    ws1.freeze_panes = 'A2'
-
-    h1 = ['번호','팀명','담당자','광고주명','캠페인명','매체명','계정ID',
-          '매입월','소진시작','소진종료','공급가액(부가세별도)',
-          '광고비','매체수수료율','매체수수료','마크업율','마크업수수료','합계',
-          '청구일자','전월오차반영','광고비청구','마크업청구','청구합계','오차','비고','통화','환율']
-    w1 = [5,8,10,20,14,12,16,10,12,12,16,14,10,12,8,14,16,14,12,14,12,14,12,22,6,6]
-    style_header(ws1, h1, w1)
-
-    num_cols = {11,12,14,16,17,19,20,21,22,23}  # 숫자 컬럼 (1-based)
-    pct_cols = {13,15}
-
-    for i, r in enumerate(rows, 2):
-        vals = [
-            r.get('no', i-1), user_team, user_name, r.get('advertiser',''),
-            r.get('campaign',''), r.get('media',''), r.get('accountId',''),
-            r.get('period',''), r.get('startDate',''), r.get('endDate',''),
-            r.get('supplyAmt',0), r.get('supplyAmt',0),
-            r.get('agencyFeeRate','') or '', r.get('agencyFee',0) or 0,
-            r.get('markupRate','') or '', r.get('markup',0) or 0,
-            r.get('total',0),
-            r.get('billingDate',''), r.get('prevDiff',0),
-            r.get('billingAdCost',0), r.get('billingMarkup',0),
-            r.get('billingTotal',0), r.get('diff',0),
-            r.get('note',''), r.get('fxCurrency','KRW') or 'KRW', r.get('fxRate') or 1
-        ]
-        for col, val in enumerate(vals, 1):
-            cell = ws1.cell(row=i, column=col, value=val)
-            cell.border = border
-            if col in num_cols:
-                cell.number_format = '#,##0'
-                cell.alignment = Alignment(horizontal='right')
-            elif col in pct_cols and isinstance(val, (int, float)):
-                cell.number_format = '0.00%'
-                cell.alignment = Alignment(horizontal='center')
-            else:
-                cell.alignment = Alignment(horizontal='left' if col > 4 else 'center')
-
-    # ── 세발요청 시트 ──
-    ws2 = wb.create_sheet('세발요청')
-    h2 = ['작성일자','담당자명','발행종류','사업자번호','사업자명','이메일수신처','경영지원팀체크','발행담당자','선불/후불','항목명','공급가액','부가세','총액','비고']
-    w2 = [14,10,10,14,20,24,14,10,8,36,16,10,16,24]
-    style_header(ws2, h2, w2)
-
-    row_num = 2
-    first = True
-    for r in rows:
-        ws2.cell(row=row_num, column=1, value=billing_date if first else '')
-        ws2.cell(row=row_num, column=2, value=user_name if first else '')
-        ws2.cell(row=row_num, column=3, value='통합발행' if first else '')
-        ws2.cell(row=row_num, column=4, value=adv_biz_no if first else '')
-        ws2.cell(row=row_num, column=5, value=adv_name if first else '')
-        ws2.cell(row=row_num, column=6, value=adv_email if first else '')
-        ws2.cell(row=row_num, column=9, value='후불')
-        ws2.cell(row=row_num, column=10, value=f"{r.get('period','')} {r.get('campaign','')} {r.get('media','')} 매체운영비")
-        c = ws2.cell(row=row_num, column=11, value=r.get('billingAdCost', 0))
-        c.number_format = '#,##0'
-        ws2.cell(row=row_num, column=14, value=r.get('note', ''))
-        for col in range(1, 15):
-            ws2.cell(row=row_num, column=col).border = border
-        row_num += 1
-        first = False
-
-        if (r.get('billingMarkup') or 0) > 0:
-            ws2.cell(row=row_num, column=9, value='후불')
-            ws2.cell(row=row_num, column=10, value=f"{r.get('period','')} {r.get('campaign','')} {r.get('media','')} 대행수수료")
-            c2 = ws2.cell(row=row_num, column=11, value=r.get('billingMarkup', 0))
-            c2.number_format = '#,##0'
-            for col in range(1, 15):
-                ws2.cell(row=row_num, column=col).border = border
-            row_num += 1
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-
-    filename = f"정산_{adv_name}_{camp_name}_{period}.xlsx"
-    return send_file(
-        buf, as_attachment=True,
-        download_name=filename,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
-
-# ───────────── 프론트엔드 ─────────────────────────────
-@app.route('/')
-def index():
-    return app.send_static_file('index.html')
-
-
-if __name__ == '__main__':
-    print("=" * 50)
-    print("📊 광고 정산 자동화 시스템 시작")
-    print("📌 접속 주소: http://localhost:5000")
-    print("=" * 50)
-    app.run(debug=True, port=5000)
+  });
+  if (!r.ok) { alert('내보내기 오류'); return; }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `정산_${adv?.name}_${camp?.name}_${stlState.period}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function stlSave() {
+  await api('/api/settlements', { method: 'POST', body: JSON.stringify(stlState.rows) });
+  settlements = await api('/api/settlements');
+  $('stl-done-label').textContent = `${stlState.adv?.name} · ${stlState.camp?.name} · ${stlState.period}`;
+  showStep(4);
+}
+
+function stlBack(from) { showStep(from); }
+function stlReset() {
+  stlState = { adv: null, camp: null, period: '', billingDate: '', inputs: {}, rows: [] };
+  populateStlAdvSelect();
+  $('stl-period').value = '';
+  $('stl-billing-date').value = '';
+  showStep(1);
+}
+
+function showStep(n) {
+  [1,2,3,4].forEach(i => {
+    $(`stl-step${i}`)?.classList.toggle('hidden', i !== n);
+    const num = $(`snum${i}`);
+    const lbl = $(`slbl${i}`);
+    if (num) { num.className = 'step-num' + (i < n ? ' done' : i === n ? ' active' : ''); num.textContent = i < n ? '✓' : i; }
+    if (lbl) { lbl.className = 'step-label' + (i === n ? ' active' : ''); }
+  });
+}
+
+
+
+// ── 관리자 ────────────────────────────────────────────
+async function loadAdminPage() {
+  // 사용자 목록
+  const users = await api('/api/admin/users');
+  const ROLE_LABEL = { admin: '👑 관리자', manager: '⭐ 팀장', member: '팀원' };
+  $('admin-user-list').innerHTML = users.map(u => `
+    <tr style="border-bottom:1px solid var(--color-border-tertiary)">
+      <td style="padding:9px 10px;font-weight:500">${u.name || '-'}</td>
+      <td style="padding:9px 10px;color:var(--color-text-secondary);font-size:12px">${u.username}</td>
+      <td style="padding:9px 10px;color:var(--color-text-secondary)">${u.team || '-'}</td>
+      <td style="padding:9px 10px;text-align:center">
+        <span style="padding:2px 10px;border-radius:6px;font-size:12px;font-weight:500;background:${u.role==='admin'?'#fdf3cd':u.role==='manager'?'#e8f4fb':'var(--color-background-secondary)'};color:${u.role==='admin'?'#b45309':u.role==='manager'?'#0c447c':'var(--color-text-secondary)'}">
+          ${ROLE_LABEL[u.role] || '팀원'}
+        </span>
+      </td>
+      <td style="padding:9px 10px;text-align:center">
+        ${u.username === currentUser?.username ? '<span style="font-size:12px;color:var(--color-text-tertiary)">본인</span>' : `
+          <select onchange="setUserRole(${u.id}, this.value)" style="padding:4px 8px;border:1px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)">
+            <option value="member" ${u.role==='member'?'selected':''}>팀원</option>
+            <option value="manager" ${u.role==='manager'?'selected':''}>⭐ 팀장</option>
+            <option value="admin" ${u.role==='admin'?'selected':''}>👑 관리자</option>
+          </select>
+        `}
+      </td>
+    </tr>
+  `).join('');
+
+  // 전체 정산 내역
+  const stls = await api('/api/admin/settlements');
+  $('admin-stl-list').innerHTML = stls.slice(0,100).map(r => `
+    <tr style="border-bottom:1px solid var(--color-border-tertiary)">
+      <td style="padding:8px 10px"><span style="font-weight:500">${r.user_name||'-'}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${r.user_team||''}</span></td>
+      <td style="padding:8px 10px">${r.advertiser||'-'}</td>
+      <td style="padding:8px 10px;color:var(--color-text-secondary)">${r.campaign||'-'}</td>
+      <td style="padding:8px 10px;color:var(--color-text-secondary)">${r.media||'-'}</td>
+      <td style="padding:8px 10px;color:var(--color-text-secondary)">${r.period||'-'}</td>
+      <td style="padding:8px 10px;text-align:right">₩${fmt(r.supply_amt)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:600">₩${fmt(r.billing_total)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--color-text-secondary)">정산 내역이 없습니다</td></tr>';
+}
+
+async function setUserRole(uid, role) {
+  const r = await api(`/api/admin/users/${uid}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+  if (r.error) { alert(r.error); return; }
+  loadAdminPage();
+}
+
+// ── 프로필 ────────────────────────────────────────────
+async function openProfile() {
+  const r = await api('/api/profile');
+  $('profile-email').textContent = r.username || '';
+  $('profile-name').value  = r.name || '';
+  $('profile-team').value  = r.team || '';
+  $('profile-error').classList.add('hidden');
+  const ROLE_LABEL = { admin: '👑 관리자', manager: '⭐ 팀장', member: '팀원' };
+  $('profile-role-badge').textContent = ROLE_LABEL[r.role] || '팀원';
+  $('profile-modal').classList.remove('hidden');
+}
+
+function closeProfile() {
+  $('profile-modal').classList.add('hidden');
+}
+
+async function saveProfile() {
+  const name = $('profile-name').value.trim();
+  const team = $('profile-team').value.trim();
+  if (!name) {
+    $('profile-error').textContent = '이름을 입력해주세요';
+    $('profile-error').classList.remove('hidden');
+    return;
+  }
+  const r = await api('/api/profile', { method: 'PUT', body: JSON.stringify({ name, team }) });
+  if (r.error) {
+    $('profile-error').textContent = r.error;
+    $('profile-error').classList.remove('hidden');
+    return;
+  }
+  // 네비 이름 업데이트
+  $('nav-user-name').textContent = name + (team ? ` · ${team}` : '');
+  currentUser.name = name;
+  currentUser.team = team;
+  closeProfile();
+  renderDash();
+}
+
+// ── 초기화 ────────────────────────────────────────────
+window.onload = async () => {
+  // URL에서 error 파라미터 제거
+  if (window.location.search) {
+    window.history.replaceState({}, document.title, '/');
+  }
+  const r = await api('/api/me');
+  if (r.id) {
+    currentUser = r;
+    $('nav-user-name').textContent = `${r.name}${r.team ? ' · ' + r.team : ''}`;
+    $('auth-page').classList.add('hidden');
+    $('main-app').classList.remove('hidden');
+    await loadAll();
+    // 관리자/팀장 탭 표시
+    if (r.role === 'admin' || r.role === 'manager') {
+      $('nav-admin-btn').style.display = 'inline-block';
+    }
+    goto('dash');
+  }
+};
+</script>
+<!-- 프로필 모달 -->
+<div id="profile-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeProfile()">
+  <div class="modal" style="max-width:440px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:20px">👤</div>
+      <div>
+        <div style="font-size:16px;font-weight:600">내 프로필</div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px" id="profile-role-badge"></div>
+      </div>
+    </div>
+    <div id="profile-error" class="alert alert-error hidden" style="margin-bottom:14px"></div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- 이메일: 수정 불가 -->
+      <div>
+        <label class="lbl">이메일 (구글 계정)</label>
+        <div style="padding:9px 12px;border:1px solid var(--color-border-tertiary);border-radius:8px;background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:14px;display:flex;align-items:center;gap:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3,5 12,13 21,5"/></svg>
+          <span id="profile-email"></span>
+        </div>
+      </div>
+      <!-- 이름: 수정 가능 -->
+      <div>
+        <label class="lbl">이름 *</label>
+        <input id="profile-name" style="width:100%;padding:9px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none;transition:border-color .15s" placeholder="이름을 입력하세요" onfocus="this.style.borderColor='var(--color-text-primary)'" onblur="this.style.borderColor='var(--color-border-secondary)'">
+      </div>
+      <!-- 팀명: 수정 가능 -->
+      <div>
+        <label class="lbl">팀명</label>
+        <input id="profile-team" style="width:100%;padding:9px 12px;border:1.5px solid var(--color-border-secondary);border-radius:8px;background:var(--color-background-primary);color:var(--color-text-primary);font-size:14px;outline:none;transition:border-color .15s" placeholder="예: 3PM-3" onfocus="this.style.borderColor='var(--color-text-primary)'" onblur="this.style.borderColor='var(--color-border-secondary)'">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px;padding-top:16px;border-top:1px solid var(--color-border-tertiary)">
+      <button class="btn btn-secondary" onclick="closeProfile()">취소</button>
+      <button class="btn btn-primary" onclick="saveProfile()">저장하기</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
