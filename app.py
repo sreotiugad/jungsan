@@ -114,6 +114,13 @@ def init_db():
             )
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS teams (
+                id BIGSERIAL PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                sort_order INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS settlements (
                 id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -174,6 +181,11 @@ def init_db():
                     account_no TEXT NOT NULL,
                     account_name TEXT DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS teams (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    sort_order INTEGER DEFAULT 0
+                );
                 CREATE TABLE IF NOT EXISTS settlements (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
@@ -192,6 +204,32 @@ def init_db():
             """)
 
 init_db()
+
+# 기본 팀 목록 초기화
+DEFAULT_TEAMS = [
+    '1본부 1팀','1본부 2팀','1본부 3팀','1본부 4팀','1본부 5팀',
+    '2본부 1팀','2본부 2팀','2본부 3팀','2본부 4팀','2본부 WB팀',
+    '3본부 1팀','3본부 2팀','3본부 3팀','3본부 4팀',
+    '4본부 1팀','4본부 2팀','4본부 3팀','4본부 4팀',
+    '글로벌본부 1팀','글로벌본부 2팀',
+    'IP실 1팀','IP실 2팀','IP실 리테일마케팅팀',
+    'PD실 1팀','PD실 2팀','PD실 3팀','PD실 4팀',
+]
+
+def init_teams():
+    try:
+        conn = get_db()
+        for i, name in enumerate(DEFAULT_TEAMS):
+            try:
+                db_execute(conn, 'INSERT INTO teams (name, sort_order) VALUES (?,?) ON CONFLICT (name) DO NOTHING', (name, i))
+            except:
+                pass
+        db_commit(conn)
+        if PG: conn.close()
+    except Exception as e:
+        pass
+
+init_teams()
 
 
 # ───────────── DB 헬퍼 ──────────────────────────────
@@ -527,6 +565,53 @@ def admin_get_settlements():
                 ORDER BY s.created_at DESC LIMIT 500
             """).fetchall()]
     return jsonify(rows)
+
+
+# ───────────── 팀 관리 API ───────────────────────────
+@app.route('/api/teams')
+@require_login
+def get_teams():
+    conn = get_db()
+    teams = db_fetchall(conn, 'SELECT * FROM teams ORDER BY sort_order, name')
+    if PG: conn.close()
+    return jsonify(teams)
+
+@app.route('/api/teams', methods=['POST'])
+@require_login
+@require_admin
+def create_team():
+    name = request.json.get('name', '').strip()
+    if not name:
+        return jsonify({'error': '팀명을 입력해주세요'}), 400
+    conn = get_db()
+    try:
+        db_insert(conn, 'INSERT INTO teams (name, sort_order) VALUES (?,?)', (name, 999))
+        db_commit(conn)
+        if PG: conn.close()
+        return jsonify({'success': True})
+    except:
+        return jsonify({'error': '이미 존재하는 팀명입니다'}), 400
+
+@app.route('/api/teams/<int:tid>', methods=['DELETE'])
+@require_login
+@require_admin
+def delete_team(tid):
+    conn = get_db()
+    db_execute(conn, 'DELETE FROM teams WHERE id=?', (tid,))
+    db_commit(conn)
+    if PG: conn.close()
+    return jsonify({'success': True})
+
+@app.route('/api/admin/users/<int:uid>/team', methods=['PUT'])
+@require_login
+@require_admin
+def admin_set_team(uid):
+    team = request.json.get('team', '')
+    conn = get_db()
+    db_execute(conn, 'UPDATE users SET team=? WHERE id=?', (team, uid))
+    db_commit(conn)
+    if PG: conn.close()
+    return jsonify({'success': True})
 
 
 # ───────────── 광고주 API ─────────────────────────────
