@@ -356,7 +356,8 @@ def me():
         'name': session['user_name'],
         'team': session.get('user_team', ''),
         'role': role,
-        'username': session.get('user_email', session.get('user_id', ''))
+        'username': session.get('user_email', session.get('user_id', '')),
+        'picture': session.get('user_picture', '')
     })
 
 
@@ -381,9 +382,10 @@ def google_callback():
         if not user_info:
             return redirect('/?error=no_userinfo')
 
-        email = user_info.get('email', '')
-        name  = user_info.get('name', '') or email.split('@')[0]
-        role  = 'admin' if email == SUPERADMIN_EMAIL else 'member'
+        email   = user_info.get('email', '')
+        name    = user_info.get('name', '') or email.split('@')[0]
+        picture = user_info.get('picture', '')
+        role    = 'admin' if email == SUPERADMIN_EMAIL else 'member'
 
         user_id = None
         user_role = role
@@ -433,11 +435,12 @@ def google_callback():
             app.logger.error(f'DB error in callback: {db_err}')
 
         session.permanent = True
-        session['user_id']    = user_id
-        session['user_name']  = user_name
-        session['user_team']  = user_team
-        session['user_role']  = user_role
-        session['user_email'] = email
+        session['user_id']      = user_id
+        session['user_name']    = user_name
+        session['user_team']    = user_team
+        session['user_role']    = user_role
+        session['user_email']   = email
+        session['user_picture'] = picture
         session.modified = True
 
         return redirect('/')
